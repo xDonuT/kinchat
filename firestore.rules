@@ -4,21 +4,57 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ------------------------------------------------------------------
-    // The two accounts allowed into this database. Anyone else gets
-    // denied by Cloud Firestore itself, not by the app.
-    //   You:      owner-account
-    //   Nephew:   nephew-account
-    // (Re-send them from README.md if you ever lose the passwords.)
+    // The accounts allowed into this database. Anyone else is denied by
+    // Cloud Firestore itself, not by the app. Add a UID here whenever a
+    // new family member joins, then redeploy.
+    //   You:      owner-account   3Dg3UMznaWTjrpodHCokaPkjEEt1
+    //   Nephew:   nephew-account      LKiCZKuQRPf3BL3NsnSDcRYIKjH2
+    //   MatMat:   matmat-account        BWBzQQl3GCeL8w9tjAY0cyxkzcB2
+    //   TanTan:   tantan-account        cCMfAF6iowWGHdDN5QYRYabe0ng1
+    //   MiKy:     miky-account          CCQve7XDMBf5srFmzUeJXolsIj92
     // ------------------------------------------------------------------
     function isMember() {
       return request.auth != null
         && request.auth.uid in [
           '3Dg3UMznaWTjrpodHCokaPkjEEt1',
-          'LKiCZKuQRPf3BL3NsnSDcRYIKjH2'
+          'LKiCZKuQRPf3BL3NsnSDcRYIKjH2',
+          'BWBzQQl3GCeL8w9tjAY0cyxkzcB2',
+          'cCMfAF6iowWGHdDN5QYRYabe0ng1',
+          'CCQve7XDMBf5srFmzUeJXolsIj92'
         ];
     }
 
-    // The only writable data in the whole database: chat messages.
+    // One small emoji per person per message, kept as a subcollection so
+    // message documents stay immutable.
+    function validReaction() {
+      return request.resource.data.keys().hasOnly(['emoji'])
+        && request.resource.data.emoji is string
+        && request.resource.data.emoji.size() > 0
+        && request.resource.data.emoji.size() <= 16;
+    }
+
+    // ------------------------------------------------------------------
+    // People: one profile per account, used to show names in the chats.
+    // You may only ever write your own.
+    // ------------------------------------------------------------------
+    match /users/{userId} {
+      allow read: if isMember();
+
+      allow create, update: if isMember()
+        && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly(['displayName', 'email', 'updatedAt'])
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.displayName.size() <= 60
+        && request.resource.data.email is string
+        && request.resource.data.email.size() <= 120;
+
+      allow delete: if false;
+    }
+
+    // ------------------------------------------------------------------
+    // The family group chat: one shared room, everyone sees everything.
+    // ------------------------------------------------------------------
     match /chats/main/messages/{messageId} {
       allow read: if isMember();
 
@@ -31,6 +67,81 @@ service cloud.firestore {
 
       // Messages cannot be altered or removed after sending.
       allow update, delete: if false;
+    }
+
+    // Reactions to messages in the family room: one doc per (member, message),
+    // and only that member can place or remove their own.
+    match /chats/main/messages/{messageId}/reactions/{userId} {
+      allow read: if isMember();
+
+      allow create, update: if isMember()
+        && request.auth.uid == userId
+        && validReaction();
+
+      allow delete: if isMember() && request.auth.uid == userId;
+    }
+
+    // ------------------------------------------------------------------
+    // 1:1 conversations. convId is "<uidA>__<uidB>" (sorted, so both
+    // people compute the same id). Only those two UIDs can touch it.
+    // ------------------------------------------------------------------
+    function conversation(convId) {
+      return get(/databases/$(database)/documents/conversations/$(convId));
+    }
+
+    function isParticipant(convId) {
+      return isMember()
+        && conversation(convId).data.participants.size() == 2
+        && request.auth.uid in conversation(convId).data.participants;
+    }
+
+    match /conversations/{convId} {
+      // Reading the conversation itself is allowed only for its two owners.
+      // (A missing document reads as null here and is denied, which is fine:
+      // the app never needs to read a conversation it has not created.)
+      allow read: if isMember()
+        && request.auth.uid in resource.data.participants;
+
+      // Creating is idempotent: the app calls this every time you open a
+      // chat, so re-writing the same two participants must also be allowed.
+      allow create: if isMember()
+        && request.resource.data.keys().hasOnly(['participants', 'updatedAt'])
+        && request.resource.data.participants is list
+        && request.resource.data.participants.size() == 2
+        && request.auth.uid in request.resource.data.participants;
+
+      // The pair can never be swapped or extended afterwards.
+      allow update: if isMember()
+        && request.auth.uid in resource.data.participants
+        && request.resource.data.participants == resource.data.participants
+        && request.resource.data.keys().hasOnly(['participants', 'updatedAt']);
+
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if isParticipant(convId);
+
+        allow create: if isParticipant(convId)
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.keys().hasOnly(['senderId', 'text', 'sentAt'])
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 2000;
+
+        allow update, delete: if false;
+
+        // Reactions inside a 1:1 thread: as with the group, each member can
+        // only manage their own reaction.
+        match /reactions/{userId} {
+          allow read: if isParticipant(convId);
+
+          allow create, update: if isParticipant(convId)
+            && request.auth.uid == userId
+            && validReaction();
+
+          allow delete: if isParticipant(convId) && request.auth.uid == userId;
+        }
+      }
     }
 
     // Everything else is off limits. Do not remove this line.

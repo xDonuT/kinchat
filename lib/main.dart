@@ -3,15 +3,21 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
 import 'firebase_options.dart';
-import 'screens/chat_screen.dart';
+import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'emulator.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } on FirebaseException catch (e) {
+    // The integration-test harness boots the app once itself, then the test
+    // body calls main() again. A second default app is expected there.
+    if (e.code != 'duplicate-app') rethrow;
+  }
   await connectToEmulators();
   runApp(const KinChatApp());
 }
@@ -82,19 +88,20 @@ class AuthGate extends StatelessWidget {
         }
         final user = snapshot.data;
         if (user == null) return const LoginScreen();
-        return _AuthedHome(uid: user.uid);
+        return _AuthedHome(uid: user.uid, email: user.email ?? '');
       },
     );
   }
 }
 
 class _AuthedHome extends StatelessWidget {
-  const _AuthedHome({required this.uid});
+  const _AuthedHome({required this.uid, required this.email});
 
   final String uid;
+  final String email;
 
   @override
   Widget build(BuildContext context) {
-    return ChatScreen(uid: uid);
+    return HomeScreen(uid: uid, email: email);
   }
 }

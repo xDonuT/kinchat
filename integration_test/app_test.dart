@@ -75,6 +75,12 @@ void main() {
     await settle(tester, 2000);
   }
 
+  /// The landing screen lists chats; open the shared family room from it.
+  Future<void> openFamilyChat(WidgetTester tester) async {
+    await tester.tap(find.text('Family'));
+    await settle(tester, 2000);
+  }
+
   testWidgets('uncle sends, nephew receives', (tester) async {
     app.main();
     await settle(tester, 3000);
@@ -88,6 +94,9 @@ void main() {
     // --- uncle creates an account and sends a message -----------------
     await createAccount(tester, uncleEmail);
 
+    // Registration lands on the chat list; open the family room.
+    await openFamilyChat(tester);
+
     if (find.byIcon(Icons.send).evaluate().isEmpty) {
       await dumpScreen(tester, 'after Create account');
       fail('never reached the chat screen after registering');
@@ -99,11 +108,18 @@ void main() {
 
     // --- sign out, nephew signs up ------------------------------------
     await signOut(tester);
+    for (var i = 0; i < 5 && find.text('Sign in').evaluate().isEmpty; i++) {
+      await settle(tester, 600);
+    }
+    if (find.text('Sign in').evaluate().isEmpty) {
+      await dumpScreen(tester, 'after sign out (login not found)');
+    }
     expect(find.text('Sign in'), findsOneWidget,
         reason: 'sign out should return to the login screen');
 
     await createAccount(tester, nephewEmail);
     await settle(tester, 2500);
+    await openFamilyChat(tester);
 
     // --- THE REAL TEST: does the message arrive? ----------------------
     expect(find.text(uncleMsg), findsOneWidget,
