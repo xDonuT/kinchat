@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "947204344972",
+    "project_id": "kinchat-c9057",
+    "storage_bucket": "kinchat-c9057.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:947204344972:android:bfe6b690ca1cf95767bfa9",
+        "android_client_info": {
+          "package_name": "com.kinchat.kinchat"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB3sRquZ6NWEcnZQZXxhQiyxDkyh5NMCPo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

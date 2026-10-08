@@ -1,0 +1,19 @@
+rules_version = '2';
+
+// ===========================================================================
+// DEVELOPMENT RULES - LOCAL EMULATOR ONLY. NEVER DEPLOY THIS FILE.
+//
+// These are deliberately permissive so that any throwaway account created in
+// the emulator can talk to Firestore. They provide NO security.
+//
+// The real rules live in firestore.rules and are verified by
+// tests/rules.test.js (19 checks). This file exists purely so `flutter run`
+// against the local emulator is not blocked by the production UID allowlist.
+// ===========================================================================
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
