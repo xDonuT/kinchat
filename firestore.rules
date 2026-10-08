@@ -12,6 +12,7 @@ service cloud.firestore {
     //   MatMat:   matmat-account        BWBzQQl3GCeL8w9tjAY0cyxkzcB2
     //   TanTan:   tantan-account        cCMfAF6iowWGHdDN5QYRYabe0ng1
     //   MiKy:     miky-account          CCQve7XDMBf5srFmzUeJXolsIj92
+    //   Orange:   orange-account     Wj7CjQLG5QMkc0eziwG8F7XB52p2
     // ------------------------------------------------------------------
     function isMember() {
       return request.auth != null
@@ -20,7 +21,8 @@ service cloud.firestore {
           'LKiCZKuQRPf3BL3NsnSDcRYIKjH2',
           'BWBzQQl3GCeL8w9tjAY0cyxkzcB2',
           'cCMfAF6iowWGHdDN5QYRYabe0ng1',
-          'CCQve7XDMBf5srFmzUeJXolsIj92'
+          'CCQve7XDMBf5srFmzUeJXolsIj92',
+          'Wj7CjQLG5QMkc0eziwG8F7XB52p2'
         ];
     }
 

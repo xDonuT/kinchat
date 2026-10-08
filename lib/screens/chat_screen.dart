@@ -8,6 +8,7 @@ import '../models/message.dart';
 import '../models/reaction.dart';
 import '../services/chat_service.dart';
 import '../services/wallpaper_service.dart';
+import '../palette.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({
@@ -380,81 +381,122 @@ class _BubbleState extends State<_Bubble> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final bg = widget.isMine
-        ? scheme.primaryContainer
-        : scheme.surfaceContainerHighest;
-    final fg = widget.isMine ? scheme.onPrimaryContainer : scheme.onSurfaceVariant;
+    final mine = widget.isMine;
+    final bubbleColor =
+        mine ? scheme.primary : scheme.surfaceContainerHighest;
+    final fg = mine ? scheme.onPrimary : scheme.onSurface;
+    final mutedFg =
+        mine ? scheme.onPrimary.withValues(alpha: 0.8) : scheme.onSurfaceVariant;
 
     return Align(
-      alignment: widget.isMine ? Alignment.centerRight : Alignment.centerLeft,
-      child: GestureDetector(
-        onLongPress: _showReactPicker,
-        child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 3),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.75,
-          ),
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.only(
-              topLeft: const Radius.circular(16),
-              topRight: const Radius.circular(16),
-              bottomLeft: Radius.circular(widget.isMine ? 16 : 4),
-              bottomRight: Radius.circular(widget.isMine ? 4 : 16),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (widget.senderName != null) ...[
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    widget.senderName!,
-                    style: TextStyle(
-                      color: fg,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 2),
-              ],
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  widget.message.text,
-                  style: TextStyle(color: fg, fontSize: 16),
-                ),
-              ),
-              const SizedBox(height: 2),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (widget.message.isPending) ...[
-                    Icon(Icons.schedule, size: 11, color: fg),
-                    const SizedBox(width: 3),
-                  ],
-                  Text(
-                    DateFormat.Hm().format(widget.message.sentAt),
-                    style: TextStyle(color: fg, fontSize: 10),
-                  ),
-                ],
-              ),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: StreamBuilder<List<Reaction>>(
-                  stream: widget.chat
-                      .watchReactions(widget.room, widget.message.id),
-                  builder: (context, snapshot) => _ReactionChips(
-                    reactions: snapshot.data ?? const <Reaction>[],
-                    myUid: widget.myUid,
-                  ),
-                ),
-              ),
+      alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.78,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            if (!mine) ...[
+              _Avatar(name: widget.senderName, uid: widget.message.senderId),
+              const SizedBox(width: 6),
             ],
+            Flexible(
+              child: GestureDetector(
+                onLongPress: _showReactPicker,
+                child: Container(
+                  margin: const EdgeInsets.symmetric(vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 9,
+                  ),
+                  decoration: BoxDecoration(
+                    color: bubbleColor,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (widget.senderName != null) ...[
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            widget.senderName!,
+                            style: TextStyle(
+                              color: mutedFg,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                      ],
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          widget.message.text,
+                          style: TextStyle(color: fg, fontSize: 16),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (widget.message.isPending) ...[
+                            Icon(Icons.schedule, size: 11, color: mutedFg),
+                            const SizedBox(width: 3),
+                          ],
+                          Text(
+                            DateFormat.Hm().format(widget.message.sentAt),
+                            style: TextStyle(color: mutedFg, fontSize: 10),
+                          ),
+                        ],
+                      ),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: StreamBuilder<List<Reaction>>(
+                          stream: widget.chat
+                              .watchReactions(widget.room, widget.message.id),
+                          builder: (context, snapshot) => _ReactionChips(
+                            reactions: snapshot.data ?? const <Reaction>[],
+                            myUid: widget.myUid,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Avatar extends StatelessWidget {
+  const _Avatar({required this.uid, this.name});
+
+  final String uid;
+  final String? name;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = colorForUid(uid);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: CircleAvatar(
+        radius: 14,
+        backgroundColor: color,
+        child: Text(
+          initialFor(name ?? ''),
+          style: TextStyle(
+            color: onColorFor(color),
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
           ),
         ),
       ),
@@ -497,7 +539,7 @@ class _ReactionChips extends StatelessWidget {
                 e.value > 1 ? '${e.key} ${e.value}' : e.key,
                 style: TextStyle(
                   fontSize: 11,
-                  color: mineIncluded ? scheme.onPrimary : Colors.black87,
+                  color: mineIncluded ? scheme.onPrimary : scheme.onSurface,
                 ),
               ),
             ),

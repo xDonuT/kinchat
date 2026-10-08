@@ -6,6 +6,7 @@ import 'firebase_options.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'emulator.dart';
+import 'services/theme_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,55 +20,75 @@ Future<void> main() async {
     if (e.code != 'duplicate-app') rethrow;
   }
   await connectToEmulators();
+  await ThemeService.instance.load();
   runApp(const KinChatApp());
 }
 
 class KinChatApp extends StatelessWidget {
   const KinChatApp({super.key});
 
+  /// Instagram-blue seed shared by the light and dark themes.
+  static const _seed = Color(0xFF0095F6);
+
+  static ThemeData _themeFor(Brightness brightness) {
+    final scheme = ColorScheme.fromSeed(
+      seedColor: _seed,
+      brightness: brightness,
+    );
+    return ThemeData(
+      colorScheme: scheme,
+      scaffoldBackgroundColor: brightness == Brightness.light
+          ? const Color(0xFFFFFFFF) // clean white
+          : const Color(0xFF161616),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'KinChat',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2E6F40)),
-        useMaterial3: true,
-      ),
-      home: const AuthGate(),
-      builder: (context, child) {
-        // A loud stripe so emulator runs are never mistaken for the real app.
-        if (!useEmulator) return child!;
-        return Column(
-          children: [
-            Material(
-              color: const Color(0xFFFFB300),
-              child: SafeArea(
-                bottom: false,
-                child: SizedBox(
-                  width: double.infinity,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    child: Text(
-                      'TEST MODE - $emulatorBannerText',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
+    return ListenableBuilder(
+      listenable: ThemeService.instance,
+      builder: (context, _) => MaterialApp(
+        title: 'KinChat',
+        debugShowCheckedModeBanner: false,
+        theme: _themeFor(Brightness.light),
+        darkTheme: _themeFor(Brightness.dark),
+        themeMode: ThemeService.instance.darkMode
+            ? ThemeMode.dark
+            : ThemeMode.light,
+        home: const AuthGate(),
+        builder: (context, child) {
+          if (!useEmulator) return child!;
+          return Column(
+            children: [
+              Material(
+                color: const Color(0xFFFFB300),
+                child: SafeArea(
+                  bottom: false,
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      child: Text(
+                        'TEST MODE - $emulatorBannerText',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-            Expanded(child: child!),
-          ],
-        );
-      },
+              Expanded(child: child!),
+            ],
+          );
+        },
+      ),
     );
   }
 }

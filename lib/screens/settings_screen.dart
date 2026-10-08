@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../models/profile.dart';
 import '../services/profile_service.dart';
+import '../services/theme_service.dart';
 import '../services/wallpaper_service.dart';
 
 /// Personal tweaks: the name others see and the chat background, which is
@@ -167,8 +168,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const Text(
                 'Your background lives only on this phone - nobody else can '
                 'see it, and it is never uploaded.',
-                style: TextStyle(fontSize: 12, color: Colors.black54),
+                style: TextStyle(fontSize: 12),
               ),
+              const Divider(height: 40),
+              const _Header(label: 'Appearance'),
+              const SizedBox(height: 8),
+              ListenableBuilder(
+                listenable: ThemeService.instance,
+                builder: (context, _) => SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  secondary: const Icon(Icons.dark_mode_outlined),
+                  title: const Text('Dark mode'),
+                  subtitle: const Text('Cosy on the eyes, especially at night.'),
+                  value: ThemeService.instance.darkMode,
+                  onChanged: (value) =>
+                      ThemeService.instance.setDarkMode(value),
+                ),
+              ),
+              const SizedBox(height: 12),
             ],
           );
         },
