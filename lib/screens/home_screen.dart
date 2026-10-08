@@ -54,14 +54,27 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _openProfile(Map<String, String> names, Profile person) {
+  Future<void> _openProfile(Map<String, String> names, Profile person) async {
+    // Firestore rules only let the two participants read/reply in a 1:1
+    // thread, and they learn who those two are from the conversation
+    // document, so it must exist before the chat screen listens.
+    final String roomId;
+    try {
+      roomId = await _profiles.openConversation(widget.uid, person.uid);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not start the chat: $e')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => ChatScreen(
           uid: widget.uid,
-          room: ChatRoom.private(
-            ProfileService.conversationIdFor(widget.uid, person.uid),
-          ),
+          room: ChatRoom.private(roomId),
           title: person.safeName,
           names: names,
         ),

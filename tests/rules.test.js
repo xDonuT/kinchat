@@ -271,6 +271,17 @@ async function main() {
       sentAt: serverTimestamp(),
     })));
 
+  // === Missing conversation documents ================================
+  await check('reading a 1:1 thread before its conversation doc exists is allowed (returns empty)', () =>
+    assertSucceeds(getDoc(doc(dbFor(A), 'conversations', 'uncreated_thread_zz', 'messages', 'ghost'))));
+
+  await check('writing into a 1:1 thread with no conversation doc is denied', () =>
+    assertFails(setDoc(doc(dbFor(A), `conversations/uncreated_thread_zz/messages`, 'm1'), {
+      senderId: A,
+      text: 'nope',
+      sentAt: serverTimestamp(),
+    })));
+
   // === 1:1 reactions =================================================
   await check('A can react to a private message', () =>
     assertSucceeds(setDoc(doc(dbFor(A), `conversations/${CONV_AB}/messages/m1/reactions`, A), { emoji: '👍' })));

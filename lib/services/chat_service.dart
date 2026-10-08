@@ -32,11 +32,12 @@ class ChatService {
   CollectionReference<Map<String, dynamic>> _messagesFor(ChatRoom room) =>
       _db.collection(room.collection).doc(room.id).collection('messages');
 
-  /// Newest first, live. Errors surface through the stream so the UI can
-  /// show "check your security rules" instead of an empty list.
+  /// Oldest first, live (newest settles at the bottom of the chat).
+  /// Errors surface through the stream so the UI can show "check your
+  /// security rules" instead of an empty list.
   Stream<List<Message>> watchMessages(ChatRoom room) {
     return _messagesFor(room)
-        .orderBy('sentAt', descending: true)
+        .orderBy('sentAt')
         .snapshots()
         .map((snap) => snap.docs.map(Message.fromDoc).toList());
   }

@@ -95,6 +95,16 @@ service cloud.firestore {
         && request.auth.uid in conversation(convId).data.participants;
     }
 
+    // Reading a thread that has no conversation document yet is harmless (it
+    // is empty - nothing can exist there until the document does), so members
+    // may do that freely. The moment content exists, only its two
+    // participants may touch it.
+    function mayReadThread(convId) {
+      return !isMember() ? false :
+             !exists(/databases/$(database)/documents/conversations/$(convId)) ? true :
+             isParticipant(convId);
+    }
+
     match /conversations/{convId} {
       // Reading the conversation itself is allowed only for its two owners.
       // (A missing document reads as null here and is denied, which is fine:
@@ -119,7 +129,7 @@ service cloud.firestore {
       allow delete: if false;
 
       match /messages/{messageId} {
-        allow read: if isParticipant(convId);
+        allow read: if mayReadThread(convId);
 
         allow create: if isParticipant(convId)
           && request.resource.data.senderId == request.auth.uid
