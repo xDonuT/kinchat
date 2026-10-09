@@ -41,6 +41,7 @@ class KinChatApp extends StatelessWidget {
       brightness: brightness,
     );
     return ThemeData(
+      fontFamily: 'Pixelify Sans',
       colorScheme: scheme,
       scaffoldBackgroundColor: brightness == Brightness.light
           ? const Color(0xFFFFFFFF) // clean white
