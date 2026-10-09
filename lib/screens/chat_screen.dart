@@ -116,6 +116,15 @@ class _ChatScreenState extends State<ChatScreen> {
       body: SafeArea(
         child: Stack(
           children: [
+            // Low-contrast pixel dither, behind a wallpaper if one is set.
+            Positioned.fill(
+              child: _DitherBackground(
+                color: Theme.of(context)
+                    .colorScheme
+                    .primary
+                    .withValues(alpha: 0.07),
+              ),
+            ),
             if (_wallpaperPath != null) ...[
               Positioned.fill(
                 child: Image.file(
@@ -413,8 +422,20 @@ class _BubbleState extends State<_Bubble> {
                     vertical: 9,
                   ),
                   decoration: BoxDecoration(
-                    color: bubbleColor,
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(2),
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [bubbleColor, _darken(bubbleColor)],
+                      stops: const [0.78, 1.0],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.12),
+                        offset: const Offset(0, 3),
+                        blurRadius: 0,
+                      ),
+                    ],
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
@@ -478,6 +499,9 @@ class _BubbleState extends State<_Bubble> {
   }
 }
 
+/// Slightly darker shade of a bubble colour, used for the 3D pixel edge.
+Color _darken(Color color) => Color.lerp(color, Colors.black, 0.18)!;
+
 class _Avatar extends StatelessWidget {
   const _Avatar({required this.uid, this.name});
 
@@ -534,7 +558,7 @@ class _ReactionChips extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
               decoration: BoxDecoration(
                 color: mineIncluded ? scheme.primary : scheme.surface,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
                 e.value > 1 ? '${e.key} ${e.value}' : e.key,
@@ -548,6 +572,46 @@ class _ReactionChips extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A sparse, low-contrast grid of dots that gives the chat a retro dithered
+/// texture without distracting from the bubbles.
+class _DitherBackground extends StatelessWidget {
+  const _DitherBackground({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(
+        painter: _DitherPainter(color),
+        size: Size.infinite,
+      );
+}
+
+class _DitherPainter extends CustomPainter {
+  _DitherPainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = color;
+    const cell = 4.0;
+    final cols = (size.width / cell).ceil();
+    final rows = (size.height / cell).ceil();
+    for (var row = 0; row < rows; row++) {
+      for (var col = 0; col < cols; col++) {
+        if ((row + col).isEven) continue;
+        canvas.drawRect(
+          Rect.fromLTWH(col * cell, row * cell, 2, 2),
+          paint,
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DitherPainter oldDelegate) => oldDelegate.color != color;
 }
 
 class _Composer extends StatelessWidget {

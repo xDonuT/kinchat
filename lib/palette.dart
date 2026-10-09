@@ -4,11 +4,11 @@ import 'package:flutter/material.dart';
 /// bubbles. Deriving the choice from the uid means everyone always sees the
 /// same person in the same colour, across every chat and every device.
 const List<Color> _personSeeds = <Color>[
-  Color(0xFF9BB8D3), // baby blue
+  Color(0xFF9CCBAA), // soft mint
+  Color(0xFFA9C6E4), // soft sky
+  Color(0xFFBFC9ED), // periwinkle
   Color(0xFFE3A9B2), // blush pink
   Color(0xFFA8C4A2), // sage
-  Color(0xFFBFB3DE), // lavender
-  Color(0xFF9CC8C5), // seafoam
   Color(0xFFEFC3A5), // apricot
 ];
 

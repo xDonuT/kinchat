@@ -32,20 +32,30 @@ Future<void> main() async {
 class KinChatApp extends StatelessWidget {
   const KinChatApp({super.key});
 
-  /// Instagram-blue seed shared by the light and dark themes.
-  static const _seed = Color(0xFF0095F6);
-
+  /// Soft retro pastels: my bubbles are mint, other people's are sky blue,
+  /// in both light and dark. Pixelify Sans is applied app-wide.
   static ThemeData _themeFor(Brightness brightness) {
+    final dark = brightness == Brightness.dark;
+    final mint = dark ? const Color(0xFF7CC99A) : const Color(0xFF8FD0A5);
+    final sky = dark ? const Color(0xFF74A8D2) : const Color(0xFFA8CBE8);
+    final bg = dark ? const Color(0xFF10161A) : const Color(0xFFF4FAF6);
     final scheme = ColorScheme.fromSeed(
-      seedColor: _seed,
+      seedColor: mint,
       brightness: brightness,
+    ).copyWith(
+      primary: mint,
+      onPrimary: dark ? const Color(0xFF0B1912) : const Color(0xFF1C3226),
+      secondary: sky,
+      onSecondary: dark ? const Color(0xFF0C1926) : const Color(0xFF1E2A37),
+      surface: bg,
+      onSurface: dark ? const Color(0xFFD9E5DD) : const Color(0xFF28322C),
+      surfaceContainerHighest: sky,
+      onSurfaceVariant: dark ? const Color(0xFF94A49B) : const Color(0xFF4F5E55),
     );
     return ThemeData(
       fontFamily: 'Pixelify Sans',
       colorScheme: scheme,
-      scaffoldBackgroundColor: brightness == Brightness.light
-          ? const Color(0xFFFFFFFF) // clean white
-          : const Color(0xFF161616),
+      scaffoldBackgroundColor: bg,
     );
   }
 
