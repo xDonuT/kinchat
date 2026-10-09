@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.5.0+15
+version: 1.6.0+16
 
 environment:
   sdk: ^3.13.5
@@ -43,6 +43,7 @@ dependencies:
   shared_preferences: ^2.5.6
   firebase_messaging: ^16.7.0
   flutter_local_notifications: ^22.3.1
+  firebase_storage: ^13.6.0
 
 dev_dependencies:
   flutter_test:
@@ -84,8 +85,8 @@ flutter:
   # list giving the asset and other descriptors for the font. For
   # example:
   fonts:
-    - family: Pixelify Sans
+    - family: Geist Pixel
       fonts:
-        - asset: assets/fonts/PixelifySans-VariableFont_wght.ttf
+        - asset: assets/fonts/GeistPixel-Square.ttf
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package

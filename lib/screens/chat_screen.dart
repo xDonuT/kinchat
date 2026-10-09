@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../models/message.dart';
@@ -9,7 +10,6 @@ import '../models/reaction.dart';
 import '../services/chat_service.dart';
 import '../services/notification_service.dart';
 import '../services/wallpaper_service.dart';
-import '../palette.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({
@@ -39,6 +39,8 @@ class _ChatScreenState extends State<ChatScreen> {
   final ChatService _chat = ChatService();
   final TextEditingController _input = TextEditingController();
   String? _wallpaperPath;
+  Message? _replyTo;
+  bool _sendingPhoto = false;
 
   @override
   void initState() {
@@ -62,14 +64,84 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _send() async {
     final text = _input.text;
     if (text.trim().isEmpty) return;
+    final reply = _replyTo;
     _input.clear();
+    setState(() => _replyTo = null);
     try {
-      await _chat.send(room: widget.room, senderId: widget.uid, text: text);
+      await _chat.send(
+        room: widget.room,
+        senderId: widget.uid,
+        text: text,
+        replyTo: reply?.id ?? '',
+        replyToText: reply?.text ?? '',
+      );
     } catch (e) {
       if (!mounted) return;
       _input.text = text;
+      setState(() => _replyTo = reply);
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('Could not send: $e')));
+    }
+  }
+
+  void _startReply(Message message) {
+    if (mounted) setState(() => _replyTo = message);
+  }
+
+  void _cancelReply() {
+    if (mounted) setState(() => _replyTo = null);
+  }
+
+  /// Pick a photo from the gallery or camera, shrink it, upload it, and post
+  /// it as a message that links to the stored file.
+  Future<void> _attachPhoto() async {
+    final picker = ImagePicker();
+    final scheme = Theme.of(context).colorScheme;
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: scheme.surface,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Gallery'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined),
+              title: const Text('Camera'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+    final file = await picker.pickImage(
+      source: source,
+      maxWidth: 1600,
+      imageQuality: 75,
+    );
+    if (file == null || !mounted) return;
+    setState(() => _sendingPhoto = true);
+    try {
+      await _chat.sendPhoto(
+        room: widget.room,
+        senderId: widget.uid,
+        path: file.path,
+        replyTo: _replyTo?.id ?? '',
+        replyToText: _replyTo?.text ?? '',
+      );
+      if (_replyTo != null) _cancelReply();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Photo failed: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _sendingPhoto = false);
     }
   }
 
@@ -174,15 +246,21 @@ class _ChatScreenState extends State<ChatScreen> {
                       return _MessageList(
                         messages: messages,
                         myUid: widget.uid,
-                        names: widget.names,
-                        showSenderNames: widget.showSenderNames,
                         room: widget.room,
                         chat: _chat,
+                        onReply: _startReply,
                       );
                     },
                   ),
                 ),
-                _Composer(controller: _input, onSend: _send),
+                _Composer(
+                  controller: _input,
+                  onSend: _send,
+                  replyTo: _replyTo,
+                  onCancelReply: _cancelReply,
+                  onAttach: _attachPhoto,
+                  sendingPhoto: _sendingPhoto,
+                ),
               ],
             ),
           ],
@@ -196,18 +274,16 @@ class _MessageList extends StatefulWidget {
   const _MessageList({
     required this.messages,
     required this.myUid,
-    required this.names,
-    required this.showSenderNames,
     required this.room,
     required this.chat,
+    required this.onReply,
   });
 
   final List<Message> messages;
   final String myUid;
-  final Map<String, String> names;
-  final bool showSenderNames;
   final ChatRoom room;
   final ChatService chat;
+  final ValueChanged<Message> onReply;
 
   @override
   State<_MessageList> createState() => _MessageListState();
@@ -241,11 +317,6 @@ class _MessageListState extends State<_MessageList> {
     super.dispose();
   }
 
-  String _nameFor(String uid) {
-    if (uid == widget.myUid) return 'You';
-    return widget.names[uid] ?? 'Family member';
-  }
-
   @override
   Widget build(BuildContext context) {
     final items = <Widget>[];
@@ -260,10 +331,10 @@ class _MessageListState extends State<_MessageList> {
       items.add(_Bubble(
         message: m,
         isMine: m.senderId == widget.myUid,
-        senderName: widget.showSenderNames ? _nameFor(m.senderId) : null,
         room: widget.room,
         myUid: widget.myUid,
         chat: widget.chat,
+        onReply: widget.onReply,
       ));
     }
 
@@ -311,7 +382,7 @@ class _Bubble extends StatefulWidget {
     required this.room,
     required this.myUid,
     required this.chat,
-    this.senderName,
+    required this.onReply,
   });
 
   static const reactionEmojis = ['❤️', '👍', '😂', '🔥', '😮', '🥺'];
@@ -321,13 +392,18 @@ class _Bubble extends StatefulWidget {
   final ChatRoom room;
   final String myUid;
   final ChatService chat;
-  final String? senderName;
+  final ValueChanged<Message> onReply;
 
   @override
   State<_Bubble> createState() => _BubbleState();
 }
 
 class _BubbleState extends State<_Bubble> {
+  static const String _replyAction = '__reply__';
+
+  /// How far the bubble has slid to the right while preparing a reply.
+  double _slide = 0;
+
   Future<void> _showReactPicker() async {
     final room = widget.room;
     final id = widget.message.id;
@@ -343,28 +419,45 @@ class _BubbleState extends State<_Bubble> {
       builder: (ctx) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              for (final e in _Bubble.reactionEmojis)
-                GestureDetector(
-                  onTap: () => Navigator.pop(ctx, e),
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: e == current
-                          ? Theme.of(ctx).colorScheme.primaryContainer
-                          : null,
-                      shape: BoxShape.circle,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  for (final e in _Bubble.reactionEmojis)
+                    GestureDetector(
+                      onTap: () => Navigator.pop(ctx, e),
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: e == current
+                              ? Theme.of(ctx).colorScheme.primaryContainer
+                              : null,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(e, style: const TextStyle(fontSize: 28)),
+                      ),
                     ),
-                    child: Text(e, style: const TextStyle(fontSize: 28)),
-                  ),
-                ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              ListTile(
+                dense: true,
+                leading: const Icon(Icons.reply),
+                title: const Text('Reply'),
+                onTap: () => Navigator.pop(ctx, _replyAction),
+              ),
             ],
           ),
         ),
       ),
     );
+
+    if (picked == _replyAction) {
+      widget.onReply(widget.message);
+      return;
+    }
 
     if (picked == null || !mounted) return;
     try {
@@ -408,60 +501,80 @@ class _BubbleState extends State<_Bubble> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            if (!mine) ...[
-              _Avatar(name: widget.senderName, uid: widget.message.senderId),
-              const SizedBox(width: 6),
-            ],
             Flexible(
               child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
                 onLongPress: _showReactPicker,
-                child: Container(
-                  margin: const EdgeInsets.symmetric(vertical: 3),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 9,
-                  ),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(2),
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [bubbleColor, _darken(bubbleColor)],
-                      stops: const [0.78, 1.0],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.12),
-                        offset: const Offset(0, 3),
-                        blurRadius: 0,
+                onHorizontalDragUpdate: (details) {
+                  final next = (_slide + details.delta.dx).clamp(0.0, 90.0);
+                  if (next != _slide) setState(() => _slide = next);
+                },
+                onHorizontalDragEnd: (details) {
+                  final wasSlid = _slide;
+                  if (mounted) setState(() => _slide = 0);
+                  final shouldReply =
+                      wasSlid >= 70 || (details.primaryVelocity ?? 0) > 300;
+                  if (shouldReply && wasSlid >= 30) {
+                    widget.onReply(widget.message);
+                  }
+                },
+                onHorizontalDragCancel: () {
+                  if (mounted) setState(() => _slide = 0);
+                },
+                child: Transform.translate(
+                  offset: Offset(_slide, 0),
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(vertical: 6),
+                    child: CustomPaint(
+                      painter: _BubblePainter(color: bubbleColor, mine: mine),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 9,
                       ),
-                    ],
-                  ),
-                  child: Column(
+                      child: Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (widget.senderName != null) ...[
-                        Align(
-                          alignment: Alignment.centerLeft,
+                      if (widget.message.replyToText.isNotEmpty)
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 5),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: fg.withValues(alpha: 0.07),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border(
+                              left: BorderSide(
+                                color: fg.withValues(alpha: 0.45),
+                                width: 3,
+                              ),
+                            ),
+                          ),
                           child: Text(
-                            widget.senderName!,
+                            _clamp(widget.message.replyToText),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               color: mutedFg,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                              height: 1.25,
                             ),
                           ),
                         ),
-                        const SizedBox(height: 2),
-                      ],
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          widget.message.text,
-                          style: TextStyle(color: fg, fontSize: 16),
+                      if (widget.message.type != 'image')
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            widget.message.text,
+                            style: TextStyle(color: fg, fontSize: 16),
+                          ),
                         ),
-                      ),
+                      if (widget.message.type == 'image' &&
+                          widget.message.imageUrl.isNotEmpty)
+                        _PhotoBubble(url: widget.message.imageUrl),
                       const SizedBox(height: 2),
                       Row(
                         mainAxisSize: MainAxisSize.min,
@@ -487,10 +600,13 @@ class _BubbleState extends State<_Bubble> {
                           ),
                         ),
                       ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
+              ),
+            ),
             ),
           ],
         ),
@@ -499,34 +615,155 @@ class _BubbleState extends State<_Bubble> {
   }
 }
 
-/// Slightly darker shade of a bubble colour, used for the 3D pixel edge.
+/// A shade lighter of a bubble colour, used for the glossy iPhone-style top
+/// of the bubble gradient.
+Color _lighten(Color color) => Color.lerp(color, Colors.white, 0.28)!;
+
+/// A shade darker of a bubble colour, used for the bottom of the bubble
+/// gradient and its 1px outline.
 Color _darken(Color color) => Color.lerp(color, Colors.black, 0.18)!;
 
-class _Avatar extends StatelessWidget {
-  const _Avatar({required this.uid, this.name});
+/// Shortens quoted text so reply previews stay a couple of lines max.
+String _clamp(String text, [int max = 120]) =>
+    text.length <= max ? text : '${text.substring(0, max)}…';
 
-  final String uid;
-  final String? name;
+/// Paints an iPhone-style bubble: a glossy pill with a small tail on the
+/// speaker's side, a 1px outline and a soft drop shadow.
+class _BubblePainter extends CustomPainter {
+  _BubblePainter({required this.color, required this.mine});
+
+  final Color color;
+  final bool mine;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final radius = const Radius.circular(22);
+    final tailRadius = const Radius.circular(6);
+    final rrect = RRect.fromRectAndCorners(
+      rect,
+      topLeft: radius,
+      topRight: radius,
+      bottomLeft: mine ? radius : tailRadius,
+      bottomRight: mine ? tailRadius : radius,
+    );
+    final path = Path()..addRRect(rrect);
+
+    // A small wedge breaking out of the bottom corner on the speaker's side.
+    final tail = Path();
+    if (mine) {
+      final cx = size.width - 14;
+      tail
+        ..moveTo(cx - 10, size.height)
+        ..lineTo(cx - 2, size.height - 12)
+        ..lineTo(cx + 7, size.height + 6)
+        ..close();
+    } else {
+      final cx = 14;
+      tail
+        ..moveTo(cx + 10, size.height)
+        ..lineTo(cx + 2, size.height - 12)
+        ..lineTo(cx - 7, size.height + 6)
+        ..close();
+    }
+    final shape = Path.combine(PathOperation.union, path, tail);
+
+    // Soft drop shadow, offset slightly downward.
+    final shadowPaint = Paint()
+      ..color = Colors.black.withValues(alpha: 0.16)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+    canvas.save();
+    canvas.translate(0, 2);
+    canvas.drawPath(shape, shadowPaint);
+    canvas.restore();
+
+    final fill = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [_lighten(color), color, _darken(color)],
+        stops: const [0.0, 0.55, 1.0],
+      ).createShader(rect);
+    canvas.drawPath(shape, fill);
+
+    final stroke = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..color = _darken(color);
+    canvas.drawPath(shape, stroke);
+  }
+
+  @override
+  bool shouldRepaint(_BubblePainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.mine != mine;
+}
+
+class _PhotoBubble extends StatelessWidget {
+  const _PhotoBubble({required this.url});
+
+  final String url;
 
   @override
   Widget build(BuildContext context) {
-    final color = colorForUid(uid);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: CircleAvatar(
-        radius: 14,
-        backgroundColor: color,
-        child: Text(
-          initialFor(name ?? ''),
-          style: TextStyle(
-            color: onColorFor(color),
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
+    final accent = Theme.of(context).colorScheme.primary;
+    return GestureDetector(
+      onTap: () => _openPhoto(context, url),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Image.network(
+          url,
+          width: 260,
+          fit: BoxFit.cover,
+          loadingBuilder: (context, child, progress) {
+            if (progress == null) return child;
+            return Container(
+              width: 260,
+              height: 150,
+              color: accent.withValues(alpha: 0.10),
+              child: const Center(
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            );
+          },
+          errorBuilder: (context, error, stack) => Container(
+            width: 260,
+            height: 150,
+            color: accent.withValues(alpha: 0.10),
+            child: Center(
+              child: Icon(Icons.broken_image_outlined, color: accent),
+            ),
           ),
         ),
       ),
     );
   }
+}
+
+/// Opens the photo full-screen, dimmable background, pinch to zoom,
+/// tap anywhere to close.
+void _openPhoto(BuildContext context, String url) {
+  Navigator.of(context).push(
+    PageRouteBuilder(
+      opaque: false,
+      barrierColor: Colors.black87,
+      pageBuilder: (context, animation, secondary) => Scaffold(
+        backgroundColor: Colors.black87,
+        body: Center(
+          child: GestureDetector(
+            onTap: () => Navigator.of(context).pop(),
+            child: InteractiveViewer(
+              maxScale: 5,
+              child: Image.network(url, fit: BoxFit.contain),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 class _ReactionChips extends StatelessWidget {
@@ -615,18 +852,75 @@ class _DitherPainter extends CustomPainter {
 }
 
 class _Composer extends StatelessWidget {
-  const _Composer({required this.controller, required this.onSend});
+  const _Composer({
+    required this.controller,
+    required this.onSend,
+    required this.onCancelReply,
+    required this.onAttach,
+    required this.sendingPhoto,
+    this.replyTo,
+  });
 
   final TextEditingController controller;
   final VoidCallback onSend;
+  final VoidCallback onCancelReply;
+  final VoidCallback onAttach;
+  final Message? replyTo;
+  final bool sendingPhoto;
 
   @override
   Widget build(BuildContext context) {
+    final reply = replyTo;
+    final accent = Theme.of(context).colorScheme.primary;
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (reply != null)
+            Container(
+              margin: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.fromLTRB(12, 4, 2, 4),
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.reply, size: 16, color: accent),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _clamp(reply.text),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 18),
+                    onPressed: onCancelReply,
+                  ),
+                ],
+              ),
+            ),
+          Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
+          if (sendingPhoto)
+            const Padding(
+              padding: EdgeInsets.only(right: 4, bottom: 4),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else
+            IconButton(
+              onPressed: onAttach,
+              icon: const Icon(Icons.add_photo_alternate_outlined),
+            ),
           Expanded(
             child: TextField(
               controller: controller,
@@ -653,6 +947,8 @@ class _Composer extends StatelessWidget {
             onPressed: onSend,
             icon: const Icon(Icons.send),
           ),
+          ],
+        ),
         ],
       ),
     );

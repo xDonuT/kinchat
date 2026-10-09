@@ -78,10 +78,37 @@ service cloud.firestore {
 
       allow create: if isMember()
         && request.resource.data.senderId == request.auth.uid
-        && request.resource.data.keys().hasOnly(['senderId', 'text', 'sentAt'])
+        && request.resource.data.keys().hasOnly([
+             'senderId',
+             'text',
+             'sentAt',
+             'replyTo',
+             'replyToText',
+             'type',
+             'imageUrl'
+           ])
         && request.resource.data.text is string
-        && request.resource.data.text.size() > 0
-        && request.resource.data.text.size() <= 2000;
+        && request.resource.data.text.size() <= 2000
+        && (request.resource.data.text.size() > 0 ||
+            ('type' in request.resource.data &&
+             request.resource.data.type == 'image'))
+        && (!('type' in request.resource.data) ||
+            (request.resource.data.type is string &&
+             (request.resource.data.type == 'text' ||
+              request.resource.data.type == 'image')))
+        && (!('imageUrl' in request.resource.data) ||
+            (request.resource.data.imageUrl is string &&
+             request.resource.data.imageUrl.size() <= 2050))
+        && (!('type' in request.resource.data) ||
+            request.resource.data.type != 'image' ||
+            (request.resource.data.imageUrl is string &&
+             request.resource.data.imageUrl.size() > 0))
+        && (!('replyTo' in request.resource.data) ||
+            (request.resource.data.replyTo is string
+              && request.resource.data.replyTo.size() <= 100))
+        && (!('replyToText' in request.resource.data) ||
+            (request.resource.data.replyToText is string
+              && request.resource.data.replyToText.size() <= 2000));
 
       // Messages cannot be altered or removed after sending.
       allow update, delete: if false;
@@ -160,10 +187,37 @@ service cloud.firestore {
 
         allow create: if isParticipant(convId)
           && request.resource.data.senderId == request.auth.uid
-          && request.resource.data.keys().hasOnly(['senderId', 'text', 'sentAt'])
+          && request.resource.data.keys().hasOnly([
+               'senderId',
+               'text',
+               'sentAt',
+               'replyTo',
+               'replyToText',
+               'type',
+               'imageUrl'
+             ])
           && request.resource.data.text is string
-          && request.resource.data.text.size() > 0
-          && request.resource.data.text.size() <= 2000;
+          && request.resource.data.text.size() <= 2000
+          && (request.resource.data.text.size() > 0 ||
+              ('type' in request.resource.data &&
+               request.resource.data.type == 'image'))
+          && (!('type' in request.resource.data) ||
+              (request.resource.data.type is string &&
+               (request.resource.data.type == 'text' ||
+                request.resource.data.type == 'image')))
+          && (!('imageUrl' in request.resource.data) ||
+              (request.resource.data.imageUrl is string &&
+               request.resource.data.imageUrl.size() <= 2050))
+          && (!('type' in request.resource.data) ||
+              request.resource.data.type != 'image' ||
+              (request.resource.data.imageUrl is string &&
+               request.resource.data.imageUrl.size() > 0))
+          && (!('replyTo' in request.resource.data) ||
+              (request.resource.data.replyTo is string
+                && request.resource.data.replyTo.size() <= 100))
+          && (!('replyToText' in request.resource.data) ||
+              (request.resource.data.replyToText is string
+                && request.resource.data.replyToText.size() <= 2000));
 
         allow update, delete: if false;
 

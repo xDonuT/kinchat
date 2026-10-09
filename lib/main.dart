@@ -36,8 +36,8 @@ class KinChatApp extends StatelessWidget {
   /// in both light and dark. Pixelify Sans is applied app-wide.
   static ThemeData _themeFor(Brightness brightness) {
     final dark = brightness == Brightness.dark;
-    final mint = dark ? const Color(0xFF7CC99A) : const Color(0xFF8FD0A5);
-    final sky = dark ? const Color(0xFF74A8D2) : const Color(0xFFA8CBE8);
+    final mint = dark ? const Color(0xFF8FD6AB) : const Color(0xFFB7E6C9);
+    final sky = dark ? const Color(0xFF8AB8DE) : const Color(0xFFC2DDF5);
     final bg = dark ? const Color(0xFF10161A) : const Color(0xFFF4FAF6);
     final scheme = ColorScheme.fromSeed(
       seedColor: mint,
@@ -53,7 +53,7 @@ class KinChatApp extends StatelessWidget {
       onSurfaceVariant: dark ? const Color(0xFF94A49B) : const Color(0xFF4F5E55),
     );
     return ThemeData(
-      fontFamily: 'Pixelify Sans',
+      fontFamily: 'Geist Pixel',
       colorScheme: scheme,
       scaffoldBackgroundColor: bg,
     );
