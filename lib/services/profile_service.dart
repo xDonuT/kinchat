@@ -91,11 +91,14 @@ class ProfileService {
   /// Creates the conversation document if it is not there yet.
   ///
   /// Called every time a chat is opened. The rules allow rewriting the same
-  /// two participants, so calling it repeatedly is harmless.
+  /// two participants, so calling it repeatedly is harmless. Participants are
+  /// stored in sorted order (matching [conversationIdFor]) so the document is
+  /// identical no matter which of the two opens it first.
   Future<String> openConversation(String uidA, String uidB) async {
     final id = conversationIdFor(uidA, uidB);
+    final pair = [uidA, uidB]..sort();
     await _db.collection('conversations').doc(id).set({
-      'participants': [uidA, uidB],
+      'participants': pair,
       'updatedAt': FieldValue.serverTimestamp(),
     });
     return id;

@@ -251,9 +251,7 @@ class _MessageListState extends State<_MessageList> {
       items.add(_Bubble(
         message: m,
         isMine: m.senderId == widget.myUid,
-        senderName: widget.showSenderNames || m.senderId != widget.myUid
-            ? _nameFor(m.senderId)
-            : null,
+        senderName: widget.showSenderNames ? _nameFor(m.senderId) : null,
         room: widget.room,
         myUid: widget.myUid,
         chat: widget.chat,

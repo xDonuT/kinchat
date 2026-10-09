@@ -237,6 +237,22 @@ async function main() {
       updatedAt: serverTimestamp(),
     })));
 
+  // The person who created a conversation may have written the participants
+  // in the opposite order. Re-opening it (which rewrites the same pair) must
+  // still succeed for the other participant.
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'conversations', CONV_AB), {
+      participants: [B, A],
+      updatedAt: serverTimestamp(),
+    });
+  });
+
+  await check('re-opening a conversation stored with reversed participants succeeds', () =>
+    assertSucceeds(setDoc(doc(dbFor(A), 'conversations', CONV_AB), {
+      participants: [A, B],
+      updatedAt: serverTimestamp(),
+    })));
+
   await check('A can send a private message', () =>
     assertSucceeds(setDoc(doc(dbFor(A), `conversations/${CONV_AB}/messages`, 'm1'), {
       senderId: A,
