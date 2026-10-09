@@ -136,19 +136,19 @@ class _ChatScreenState extends State<ChatScreen> {
         child: Stack(
           children: [
             // Low-contrast pixel dither, behind a wallpaper if one is set.
-            RepaintBoundary(
-              child: Positioned.fill(
+            Positioned.fill(
+              child: RepaintBoundary(
                 child: _DitherBackground(
-                color: Theme.of(context)
-                    .colorScheme
-                    .primary
-                    .withValues(alpha: 0.07),
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primary
+                      .withValues(alpha: 0.07),
+                ),
               ),
             ),
-            ),
             if (_wallpaperPath != null) ...[
-              RepaintBoundary(
-                child: Positioned.fill(
+              Positioned.fill(
+                child: RepaintBoundary(
                   child: Image.file(
                     File(_wallpaperPath!),
                     fit: BoxFit.cover,
