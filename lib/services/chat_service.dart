@@ -1,7 +1,4 @@
-import 'dart:io';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 
 import '../models/message.dart';
 import '../models/reaction.dart';
@@ -31,7 +28,6 @@ class ChatService {
   ChatService({FirebaseFirestore? db}) : _db = db ?? FirebaseFirestore.instance;
 
   final FirebaseFirestore _db;
-  final FirebaseStorage _storage = FirebaseStorage.instance;
 
   CollectionReference<Map<String, dynamic>> _messagesFor(ChatRoom room) =>
       _db.collection(room.collection).doc(room.id).collection('messages');
@@ -68,48 +64,6 @@ class ChatService {
       'sentAt': FieldValue.serverTimestamp(),
       'replyTo': replyTo,
       'replyToText': replyToText.trim(),
-    });
-  }
-
-  /// Uploads a photo to Storage and writes the message that points at it.
-  /// The image is expected to be pre-shrunk on-device (maxWidth ~1600,
-  /// quality ~75 %) so a family photo stays comfortably inside the free
-  /// storage tier.
-  Future<void> sendPhoto({
-    required ChatRoom room,
-    required String senderId,
-    required String path,
-    String replyTo = '',
-    String replyToText = '',
-  }) async {
-    final ref = _messagesFor(room).doc();
-    final ext = path.split('.').last.toLowerCase();
-    final safeExt = const ['jpg', 'jpeg', 'png', 'webp', 'gif'].contains(ext)
-        ? ext
-        : 'jpg';
-    final contentType = {
-      'jpg': 'image/jpeg',
-      'jpeg': 'image/jpeg',
-      'png': 'image/png',
-      'webp': 'image/webp',
-      'gif': 'image/gif',
-    }[safeExt]!;
-    final storageRef =
-        _storage.ref('chats/${room.collection}/${room.id}/${ref.id}.$safeExt');
-    final bytes = await File(path).readAsBytes();
-    await storageRef.putData(
-      bytes,
-      SettableMetadata(contentType: contentType),
-    );
-    final imageUrl = await storageRef.getDownloadURL();
-    await ref.set({
-      'senderId': senderId,
-      'type': 'image',
-      'text': '',
-      'sentAt': FieldValue.serverTimestamp(),
-      'replyTo': replyTo,
-      'replyToText': replyToText.trim(),
-      'imageUrl': imageUrl,
     });
   }
 

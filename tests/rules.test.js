@@ -159,29 +159,6 @@ async function main() {
       replyToText: 'what i was quoting',
     })));
 
-  await check('A can send a photo to the family room', () =>
-    assertSucceeds(setDoc(doc(dbFor(A), MSG, 'photo1'), {
-      ...goodMessage,
-      type: 'image',
-      text: '',
-      imageUrl: 'https://example.com/a.jpg',
-    })));
-
-  await check('A cannot send a non-image message type', () =>
-    assertFails(setDoc(doc(dbFor(A), MSG, 'vid1'), {
-      ...goodMessage,
-      type: 'video',
-      text: '',
-      imageUrl: 'https://example.com/a.mp4',
-    })));
-
-  await check('A cannot send an image with no imageUrl', () =>
-    assertFails(setDoc(doc(dbFor(A), MSG, 'emptyimg'), {
-      ...goodMessage,
-      type: 'image',
-      text: '',
-    })));
-
   // === Group chat: immutability ======================================
   await check('A cannot edit a message after sending it', () =>
     assertFails(setDoc(doc(dbFor(A), MSG, 'fromA'), {
@@ -297,15 +274,6 @@ async function main() {
       sentAt: serverTimestamp(),
       replyTo: 'm2',
       replyToText: 'hi back',
-    })));
-
-  await check('A can send a photo in the private thread', () =>
-    assertSucceeds(setDoc(doc(dbFor(A), `conversations/${CONV_AB}/messages`, 'm1p'), {
-      senderId: A,
-      type: 'image',
-      text: '',
-      imageUrl: 'https://example.com/b.jpg',
-      sentAt: serverTimestamp(),
     })));
 
   await check('B can read the private message', () =>

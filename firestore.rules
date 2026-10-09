@@ -83,26 +83,11 @@ service cloud.firestore {
              'text',
              'sentAt',
              'replyTo',
-             'replyToText',
-             'type',
-             'imageUrl'
+             'replyToText'
            ])
         && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
         && request.resource.data.text.size() <= 2000
-        && (request.resource.data.text.size() > 0 ||
-            ('type' in request.resource.data &&
-             request.resource.data.type == 'image'))
-        && (!('type' in request.resource.data) ||
-            (request.resource.data.type is string &&
-             (request.resource.data.type == 'text' ||
-              request.resource.data.type == 'image')))
-        && (!('imageUrl' in request.resource.data) ||
-            (request.resource.data.imageUrl is string &&
-             request.resource.data.imageUrl.size() <= 2050))
-        && (!('type' in request.resource.data) ||
-            request.resource.data.type != 'image' ||
-            (request.resource.data.imageUrl is string &&
-             request.resource.data.imageUrl.size() > 0))
         && (!('replyTo' in request.resource.data) ||
             (request.resource.data.replyTo is string
               && request.resource.data.replyTo.size() <= 100))
@@ -192,26 +177,11 @@ service cloud.firestore {
                'text',
                'sentAt',
                'replyTo',
-               'replyToText',
-               'type',
-               'imageUrl'
+               'replyToText'
              ])
           && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
           && request.resource.data.text.size() <= 2000
-          && (request.resource.data.text.size() > 0 ||
-              ('type' in request.resource.data &&
-               request.resource.data.type == 'image'))
-          && (!('type' in request.resource.data) ||
-              (request.resource.data.type is string &&
-               (request.resource.data.type == 'text' ||
-                request.resource.data.type == 'image')))
-          && (!('imageUrl' in request.resource.data) ||
-              (request.resource.data.imageUrl is string &&
-               request.resource.data.imageUrl.size() <= 2050))
-          && (!('type' in request.resource.data) ||
-              request.resource.data.type != 'image' ||
-              (request.resource.data.imageUrl is string &&
-               request.resource.data.imageUrl.size() > 0))
           && (!('replyTo' in request.resource.data) ||
               (request.resource.data.replyTo is string
                 && request.resource.data.replyTo.size() <= 100))

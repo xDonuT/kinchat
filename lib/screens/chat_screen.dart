@@ -1,8 +1,9 @@
 import 'dart:io';
 
+import 'dart:ui' show PointMode;
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../models/message.dart';
@@ -40,7 +41,6 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _input = TextEditingController();
   String? _wallpaperPath;
   Message? _replyTo;
-  bool _sendingPhoto = false;
 
   @override
   void initState() {
@@ -92,59 +92,6 @@ class _ChatScreenState extends State<ChatScreen> {
     if (mounted) setState(() => _replyTo = null);
   }
 
-  /// Pick a photo from the gallery or camera, shrink it, upload it, and post
-  /// it as a message that links to the stored file.
-  Future<void> _attachPhoto() async {
-    final picker = ImagePicker();
-    final scheme = Theme.of(context).colorScheme;
-    final source = await showModalBottomSheet<ImageSource>(
-      context: context,
-      backgroundColor: scheme.surface,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
-              title: const Text('Gallery'),
-              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
-            ),
-            ListTile(
-              leading: const Icon(Icons.camera_alt_outlined),
-              title: const Text('Camera'),
-              onTap: () => Navigator.pop(ctx, ImageSource.camera),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (source == null || !mounted) return;
-    final file = await picker.pickImage(
-      source: source,
-      maxWidth: 1600,
-      imageQuality: 75,
-    );
-    if (file == null || !mounted) return;
-    setState(() => _sendingPhoto = true);
-    try {
-      await _chat.sendPhoto(
-        room: widget.room,
-        senderId: widget.uid,
-        path: file.path,
-        replyTo: _replyTo?.id ?? '',
-        replyToText: _replyTo?.text ?? '',
-      );
-      if (_replyTo != null) _cancelReply();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Photo failed: $e')));
-      }
-    } finally {
-      if (mounted) setState(() => _sendingPhoto = false);
-    }
-  }
-
   Future<void> _signOut() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -189,20 +136,24 @@ class _ChatScreenState extends State<ChatScreen> {
         child: Stack(
           children: [
             // Low-contrast pixel dither, behind a wallpaper if one is set.
-            Positioned.fill(
-              child: _DitherBackground(
+            RepaintBoundary(
+              child: Positioned.fill(
+                child: _DitherBackground(
                 color: Theme.of(context)
                     .colorScheme
                     .primary
                     .withValues(alpha: 0.07),
               ),
             ),
+            ),
             if (_wallpaperPath != null) ...[
-              Positioned.fill(
-                child: Image.file(
-                  File(_wallpaperPath!),
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => const SizedBox.shrink(),
+              RepaintBoundary(
+                child: Positioned.fill(
+                  child: Image.file(
+                    File(_wallpaperPath!),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                  ),
                 ),
               ),
               Positioned.fill(
@@ -258,8 +209,6 @@ class _ChatScreenState extends State<ChatScreen> {
                   onSend: _send,
                   replyTo: _replyTo,
                   onCancelReply: _cancelReply,
-                  onAttach: _attachPhoto,
-                  sendingPhoto: _sendingPhoto,
                 ),
               ],
             ),
@@ -502,8 +451,9 @@ class _BubbleState extends State<_Bubble> {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Flexible(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
+              child: RepaintBoundary(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
                 onLongPress: _showReactPicker,
                 onHorizontalDragUpdate: (details) {
                   final next = (_slide + details.delta.dx).clamp(0.0, 90.0);
@@ -564,17 +514,13 @@ class _BubbleState extends State<_Bubble> {
                             ),
                           ),
                         ),
-                      if (widget.message.type != 'image')
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            widget.message.text,
-                            style: TextStyle(color: fg, fontSize: 16),
-                          ),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          widget.message.text,
+                          style: TextStyle(color: fg, fontSize: 16),
                         ),
-                      if (widget.message.type == 'image' &&
-                          widget.message.imageUrl.isNotEmpty)
-                        _PhotoBubble(url: widget.message.imageUrl),
+                      ),
                       const SizedBox(height: 2),
                       Row(
                         mainAxisSize: MainAxisSize.min,
@@ -604,6 +550,7 @@ class _BubbleState extends State<_Bubble> {
                     ),
                   ),
                 ),
+              ),
               ),
               ),
             ),
@@ -698,74 +645,6 @@ class _BubblePainter extends CustomPainter {
       oldDelegate.color != color || oldDelegate.mine != mine;
 }
 
-class _PhotoBubble extends StatelessWidget {
-  const _PhotoBubble({required this.url});
-
-  final String url;
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
-    return GestureDetector(
-      onTap: () => _openPhoto(context, url),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Image.network(
-          url,
-          width: 260,
-          fit: BoxFit.cover,
-          loadingBuilder: (context, child, progress) {
-            if (progress == null) return child;
-            return Container(
-              width: 260,
-              height: 150,
-              color: accent.withValues(alpha: 0.10),
-              child: const Center(
-                child: SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ),
-            );
-          },
-          errorBuilder: (context, error, stack) => Container(
-            width: 260,
-            height: 150,
-            color: accent.withValues(alpha: 0.10),
-            child: Center(
-              child: Icon(Icons.broken_image_outlined, color: accent),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Opens the photo full-screen, dimmable background, pinch to zoom,
-/// tap anywhere to close.
-void _openPhoto(BuildContext context, String url) {
-  Navigator.of(context).push(
-    PageRouteBuilder(
-      opaque: false,
-      barrierColor: Colors.black87,
-      pageBuilder: (context, animation, secondary) => Scaffold(
-        backgroundColor: Colors.black87,
-        body: Center(
-          child: GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
-            child: InteractiveViewer(
-              maxScale: 5,
-              child: Image.network(url, fit: BoxFit.contain),
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
 class _ReactionChips extends StatelessWidget {
   const _ReactionChips({required this.reactions, required this.myUid});
 
@@ -832,19 +711,21 @@ class _DitherPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = color;
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.square;
     const cell = 4.0;
     final cols = (size.width / cell).ceil();
     final rows = (size.height / cell).ceil();
+    final points = <Offset>[];
     for (var row = 0; row < rows; row++) {
       for (var col = 0; col < cols; col++) {
         if ((row + col).isEven) continue;
-        canvas.drawRect(
-          Rect.fromLTWH(col * cell, row * cell, 2, 2),
-          paint,
-        );
+        points.add(Offset(col * cell + 1, row * cell + 1));
       }
     }
+    canvas.drawPoints(PointMode.points, points, paint);
   }
 
   @override
@@ -856,17 +737,13 @@ class _Composer extends StatelessWidget {
     required this.controller,
     required this.onSend,
     required this.onCancelReply,
-    required this.onAttach,
-    required this.sendingPhoto,
     this.replyTo,
   });
 
   final TextEditingController controller;
   final VoidCallback onSend;
   final VoidCallback onCancelReply;
-  final VoidCallback onAttach;
   final Message? replyTo;
-  final bool sendingPhoto;
 
   @override
   Widget build(BuildContext context) {
@@ -907,20 +784,6 @@ class _Composer extends StatelessWidget {
           Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          if (sendingPhoto)
-            const Padding(
-              padding: EdgeInsets.only(right: 4, bottom: 4),
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            )
-          else
-            IconButton(
-              onPressed: onAttach,
-              icon: const Icon(Icons.add_photo_alternate_outlined),
-            ),
           Expanded(
             child: TextField(
               controller: controller,

@@ -9,8 +9,6 @@ class Message {
     this.isPending = false,
     this.replyTo = '',
     this.replyToText = '',
-    this.type = 'text',
-    this.imageUrl = '',
   });
 
   final String id;
@@ -23,12 +21,6 @@ class Message {
 
   /// A saved copy of the quoted text, so a reply renders without a fetch.
   final String replyToText;
-
-  /// 'text' or 'image' (defaults to 'text' for older messages).
-  final String type;
-
-  /// Download URL of the stored photo, only set when [type] is 'image'.
-  final String imageUrl;
 
   /// True while the server timestamp has not resolved yet, which happens
   /// briefly for a message that was just sent locally.
@@ -45,8 +37,6 @@ class Message {
       isPending: stamp == null,
       replyTo: data?['replyTo'] as String? ?? '',
       replyToText: data?['replyToText'] as String? ?? '',
-      type: data?['type'] as String? ?? 'text',
-      imageUrl: data?['imageUrl'] as String? ?? '',
     );
   }
 }
