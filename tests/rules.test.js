@@ -152,6 +152,9 @@ async function main() {
       role: 'admin',
     })));
 
+  await check('any member can delete a group message (clear chat)', () =>
+    assertSucceeds(deleteDoc(doc(dbFor(A), MSG, 'gone'))));
+
   await check('A can send a reply to a group message', () =>
     assertSucceeds(setDoc(doc(dbFor(A), MSG, 'reply1'), {
       ...goodMessage,
@@ -166,11 +169,11 @@ async function main() {
       text: 'edited',
     })));
 
-  await check('A cannot delete a message', () =>
-    assertFails(deleteDoc(doc(dbFor(A), MSG, 'fromA'))));
+  await check('any member can delete a group message', () =>
+    assertSucceeds(deleteDoc(doc(dbFor(A), MSG, 'fromA'))));
 
-  await check('B cannot delete a message sent by A', () =>
-    assertFails(deleteDoc(doc(dbFor(B), MSG, 'fromA'))));
+  await check('even B may delete a message sent by A', () =>
+    assertSucceeds(deleteDoc(doc(dbFor(B), MSG, 'fromA'))));
 
   // === Group reactions ===============================================
   await check('a member can react to a group message', () =>
@@ -266,6 +269,9 @@ async function main() {
       text: 'psst',
       sentAt: serverTimestamp(),
     })));
+
+  await check('a participant can delete a 1:1 message (clear chat)', () =>
+    assertSucceeds(deleteDoc(doc(dbFor(A), `conversations/${CONV_AB}/messages`, 'gone'))));
 
   await check('A can reply to a 1:1 message', () =>
     assertSucceeds(setDoc(doc(dbFor(A), `conversations/${CONV_AB}/messages`, 'm1r'), {

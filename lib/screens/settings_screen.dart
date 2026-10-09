@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../models/profile.dart';
+import '../services/chat_service.dart';
 import '../services/profile_service.dart';
 import '../services/theme_service.dart';
 import '../services/wallpaper_service.dart';
@@ -22,6 +23,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final ProfileService _profiles = ProfileService();
+  final ChatService _chat = ChatService();
   final TextEditingController _name = TextEditingController();
   String? _wallpaperPath;
   bool _saving = false;
@@ -67,6 +69,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _removeWallpaper() async {
     await WallpaperService.remove();
     if (mounted) setState(() => _wallpaperPath = null);
+  }
+
+  Future<void> _clearChat(ChatRoom room, String label) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Clear the $label chat?'),
+        content: const Text(
+          'Every message in this chat will be deleted for everyone. '
+          'This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await _chat.clearChat(room);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$label chat cleared.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not clear: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _saveName() async {
@@ -185,11 +225,76 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ThemeService.instance.setDarkMode(value),
                 ),
               ),
+              const Divider(height: 40),
+              const _Header(label: 'Clear chat'),
+              const SizedBox(height: 8),
+              const Text(
+                'Permanently deletes every message in a chat, for everyone. '
+                'There is no undo.',
+                style: TextStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 8),
+              StreamBuilder<List<Profile>>(
+                stream: _profiles.watchMembers(),
+                builder: (context, snapshot) {
+                  final members = snapshot.data ?? const <Profile>[];
+                  final others =
+                      members.where((p) => p.uid != widget.uid).toList();
+                  return Column(
+                    children: [
+                      _ClearTile(
+                        label: 'Family',
+                        subtitle: 'Everyone in one room',
+                        onClear: () => _clearChat(
+                          const ChatRoom.group(),
+                          'Family',
+                        ),
+                      ),
+                      for (final person in others)
+                        _ClearTile(
+                          label: person.safeName,
+                          subtitle: 'Your private chat',
+                          onClear: () => _clearChat(
+                            ChatRoom.private(ProfileService
+                                .conversationIdFor(widget.uid, person.uid)),
+                            person.safeName,
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
               const SizedBox(height: 12),
             ],
           );
         },
       ),
+    );
+  }
+}
+
+class _ClearTile extends StatelessWidget {
+  const _ClearTile({
+    required this.label,
+    required this.onClear,
+    this.subtitle,
+  });
+
+  final String label;
+  final String? subtitle;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(
+        Icons.delete_outline,
+        color: Theme.of(context).colorScheme.error,
+      ),
+      title: Text(label),
+      subtitle: subtitle == null ? null : Text(subtitle!),
+      onTap: onClear,
     );
   }
 }

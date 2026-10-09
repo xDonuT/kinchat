@@ -67,6 +67,32 @@ class ChatService {
     });
   }
 
+  /// Permanently deletes every message (and its reactions) in a chat, for
+  /// everyone. Writes are batched to stay well under Firestore's limits.
+  Future<void> clearChat(ChatRoom room) async {
+    final messages = await _messagesFor(room).get();
+    var batch = _db.batch();
+    var ops = 0;
+    Future<void> flush() async {
+      if (ops == 0) return;
+      await batch.commit();
+      batch = _db.batch();
+      ops = 0;
+    }
+    for (final message in messages.docs) {
+      final likes = await message.reference.collection('reactions').get();
+      for (final like in likes.docs) {
+        batch.delete(like.reference);
+        ops++;
+        if (ops >= 400) await flush();
+      }
+      batch.delete(message.reference);
+      ops++;
+      if (ops >= 400) await flush();
+    }
+    await flush();
+  }
+
   CollectionReference<Map<String, dynamic>> _reactionsFor(
           ChatRoom room, String messageId) =>
       _db

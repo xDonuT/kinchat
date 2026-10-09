@@ -95,12 +95,15 @@ service cloud.firestore {
             (request.resource.data.replyToText is string
               && request.resource.data.replyToText.size() <= 2000));
 
-      // Messages cannot be altered or removed after sending.
-      allow update, delete: if false;
+      // Messages cannot be altered, but any member may clear the whole chat
+      // (the app batch-deletes every message and its reactions).
+      allow update: if false;
+      allow delete: if isMember();
     }
 
     // Reactions to messages in the family room: one doc per (member, message),
-    // and only that member can place or remove their own.
+    // and only that member can place their own. Members may delete them too
+    // so the clear-chat bulk removal (of everyone's reactions) is allowed.
     match /chats/main/messages/{messageId}/reactions/{userId} {
       allow read: if isMember();
 
@@ -108,7 +111,7 @@ service cloud.firestore {
         && request.auth.uid == userId
         && validReaction();
 
-      allow delete: if isMember() && request.auth.uid == userId;
+      allow delete: if isMember();
     }
 
     // ------------------------------------------------------------------
@@ -189,10 +192,12 @@ service cloud.firestore {
               (request.resource.data.replyToText is string
                 && request.resource.data.replyToText.size() <= 2000));
 
-        allow update, delete: if false;
+        allow update: if false;
+        allow delete: if isParticipant(convId);
 
         // Reactions inside a 1:1 thread: as with the group, each member can
-        // only manage their own reaction.
+        // only place their own, but both may delete them so clearing the
+        // thread (which removes everyone's reactions) is allowed.
         match /reactions/{userId} {
           allow read: if isParticipant(convId);
 
@@ -200,7 +205,7 @@ service cloud.firestore {
             && request.auth.uid == userId
             && validReaction();
 
-          allow delete: if isParticipant(convId) && request.auth.uid == userId;
+          allow delete: if isParticipant(convId);
         }
       }
     }
