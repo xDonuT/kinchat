@@ -6,6 +6,7 @@ import 'firebase_options.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'emulator.dart';
+import 'services/notification_service.dart';
 import 'services/theme_service.dart';
 
 Future<void> main() async {
@@ -21,6 +22,10 @@ Future<void> main() async {
   }
   await connectToEmulators();
   await ThemeService.instance.load();
+  await NotificationService.instance.init();
+  FirebaseAuth.instance.authStateChanges().listen((user) {
+    if (user != null) NotificationService.instance.handleSignedIn();
+  });
   runApp(const KinChatApp());
 }
 
@@ -55,6 +60,7 @@ class KinChatApp extends StatelessWidget {
         themeMode: ThemeService.instance.darkMode
             ? ThemeMode.dark
             : ThemeMode.light,
+        navigatorKey: NotificationService.instance.navigatorKey,
         home: const AuthGate(),
         builder: (context, child) {
           if (!useEmulator) return child!;

@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../models/message.dart';
 import '../models/reaction.dart';
 import '../services/chat_service.dart';
+import '../services/notification_service.dart';
 import '../services/wallpaper_service.dart';
 import '../palette.dart';
 
@@ -43,6 +44,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _loadWallpaper();
+    NotificationService.instance.setCurrentRoom(widget.room.id);
   }
 
   Future<void> _loadWallpaper() async {
@@ -52,6 +54,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    NotificationService.instance.setCurrentRoom(null);
     _input.dispose();
     super.dispose();
   }

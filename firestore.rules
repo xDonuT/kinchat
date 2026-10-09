@@ -52,6 +52,22 @@ service cloud.firestore {
         && request.resource.data.email.size() <= 120;
 
       allow delete: if false;
+
+      // Each phone stores its notification token here, so the notification
+      // Cloud Function can reach the right devices. You can only manage
+      // your own tokens.
+      match /tokens/{tokenId} {
+        allow read: if isMember();
+
+        allow create, update: if isMember()
+          && request.auth.uid == userId
+          && request.resource.data.keys().hasOnly(['token', 'platform', 'updatedAt'])
+          && request.resource.data.token is string
+          && request.resource.data.token.size() > 0
+          && request.resource.data.token.size() <= 512;
+
+        allow delete: if isMember() && request.auth.uid == userId;
+      }
     }
 
     // ------------------------------------------------------------------
