@@ -37,7 +37,7 @@ if (UIDS.length < 2) {
   process.exit(2);
 }
 
-const [A, B] = UIDS;
+const [A, B, C] = UIDS;
 const OUTSIDER = 'rAnDoMpErSoN123';
 
 const MSG = 'chats/main/messages';
@@ -234,6 +234,66 @@ async function main() {
   await check('a member cannot delete a profile', () =>
     assertFails(deleteDoc(doc(dbFor(A), 'users', A))));
 
+  // === Contacts (add-first / friend requests) ========================
+  const contact = (x, y, requestedBy, status) => ({
+    participants: [x, y].sort(),
+    requestedBy,
+    status,
+    updatedAt: serverTimestamp(),
+  });
+
+  await check('A can send B a contact request', () =>
+    assertSucceeds(setDoc(doc(dbFor(A), 'contacts', CONV_AB), {
+      participants: [A, B],
+      requestedBy: A,
+      status: 'pending',
+      updatedAt: serverTimestamp(),
+    })));
+
+  await check('a request cannot be created on someone else\'s behalf', () =>
+    assertFails(setDoc(doc(dbFor(A), 'contacts', convId(A, OUTSIDER)), {
+      participants: [A, OUTSIDER].sort(),
+      requestedBy: OUTSIDER,
+      status: 'pending',
+      updatedAt: serverTimestamp(),
+    })));
+
+  await check('a stranger cannot create a contact request', () =>
+    assertFails(setDoc(doc(dbFor(OUTSIDER), 'contacts', convId(A, OUTSIDER)), {
+      participants: [A, OUTSIDER].sort(),
+      requestedBy: OUTSIDER,
+      status: 'pending',
+      updatedAt: serverTimestamp(),
+    })));
+
+  await check('A cannot open a 1:1 with B while the request is still pending', () =>
+    assertFails(setDoc(doc(dbFor(A), 'conversations', CONV_AB), {
+      participants: [A, B],
+      updatedAt: serverTimestamp(),
+    })));
+
+  await check('the requester cannot accept their own request', () =>
+    assertFails(setDoc(doc(dbFor(A), 'contacts', CONV_AB), {
+      participants: [A, B],
+      requestedBy: A,
+      status: 'accepted',
+      updatedAt: serverTimestamp(),
+    })));
+
+  await check('B can accept A\'s request', () =>
+    assertSucceeds(setDoc(doc(dbFor(B), 'contacts', CONV_AB), {
+      participants: [A, B],
+      requestedBy: A,
+      status: 'accepted',
+      updatedAt: serverTimestamp(),
+    })));
+
+  await check('B can read the contact link', () =>
+    assertSucceeds(getDoc(doc(dbFor(B), 'contacts', CONV_AB))));
+
+  await check('a stranger cannot read a contact link', () =>
+    assertFails(getDoc(doc(dbFor(OUTSIDER), 'contacts', CONV_AB))));
+
   // === 1:1 conversations =============================================
   await check('A can open a 1:1 conversation with B', () =>
     assertSucceeds(setDoc(doc(dbFor(A), 'conversations', CONV_AB), {
@@ -362,6 +422,19 @@ async function main() {
       participants: [OUTSIDER, B],
       updatedAt: serverTimestamp(),
     })));
+
+  // === Removing a contact (unfriend) =================================
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'contacts', convId(A, C)), {
+      participants: [A, C].sort(),
+      requestedBy: A,
+      status: 'accepted',
+      updatedAt: serverTimestamp(),
+    });
+  });
+
+  await check('a participant can remove an accepted contact', () =>
+    assertSucceeds(deleteDoc(doc(dbFor(A), 'contacts', convId(A, C)))));
 
   // === Everything else ===============================================
   await check('a member cannot write outside the known collections', () =>

@@ -3,12 +3,13 @@ import 'package:flutter/material.dart';
 
 import '../models/profile.dart';
 import '../services/chat_service.dart';
+import '../services/contacts_service.dart';
 import '../services/profile_service.dart';
 import 'chat_screen.dart';
 import 'settings_screen.dart';
 
-/// The landing screen: one entry for the family group, then a list of people
-/// to message privately. Tapping either pushes a full chat screen.
+/// The landing screen: the family group, your 1:1 chats, and the people you
+/// can add. Tapping a chat pushes the full chat screen.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.uid, required this.email});
 
@@ -21,12 +22,20 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final ProfileService _profiles = ProfileService();
+  final ContactsService _contacts = ContactsService();
 
   @override
   void initState() {
     super.initState();
-    // Make sure our own name exists so other people can see who we are.
+    // Profiles exist purely so chat bubbles can say who wrote something.
     _profiles.ensureProfile(uid: widget.uid, email: widget.email);
+  }
+
+  void _toast(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   Future<void> _signOut() async {
@@ -34,7 +43,7 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Sign out?'),
-        content: const Text('You will need your password to sign back in.'),
+        content: const Text('You will need to sign in again to use KinChat.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -49,7 +58,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     if (confirmed == true) {
       await FirebaseAuth.instance.signOut();
-      // Root swaps to the login screen on sign-out; clear any pushed routes.
       if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
     }
   }
@@ -62,16 +70,12 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       roomId = await _profiles.openConversation(widget.uid, person.uid);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not start the chat: $e')),
-        );
-      }
+      _toast('Could not start the chat: $e');
       return;
     }
     if (!mounted) return;
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
+      MaterialPageRoute(
         builder: (_) => ChatScreen(
           uid: widget.uid,
           room: ChatRoom.private(roomId),
@@ -82,9 +86,35 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _openSettings() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
+  Future<void> _sendRequest(Profile person) async {
+    try {
+      await _contacts.request(widget.uid, person.uid);
+      _toast('Request sent to ${person.safeName}.');
+    } catch (e) {
+      _toast('Could not send the request: $e');
+    }
+  }
+
+  Future<void> _accept(Profile person) async {
+    try {
+      await _contacts.accept(widget.uid, person.uid);
+      _toast('${person.safeName} added. You can chat now.');
+    } catch (e) {
+      _toast('Could not accept: $e');
+    }
+  }
+
+  Future<void> _removeLink(Profile person) async {
+    try {
+      await _contacts.remove(widget.uid, person.uid);
+    } catch (e) {
+      _toast('Could not update: $e');
+    }
+  }
+
+  Future<void> _openSettings() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
         builder: (_) => SettingsScreen(uid: widget.uid, email: widget.email),
       ),
     );
@@ -110,77 +140,210 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: StreamBuilder<List<Profile>>(
         stream: _profiles.watchMembers(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  'Could not load the family list.\n\n${snapshot.error}',
-                  textAlign: TextAlign.center,
-                ),
-              ),
+        builder: (context, membersSnap) {
+          if (membersSnap.hasError) {
+            return _ErrorText(
+              message: 'Could not load the family list.\n\n'
+                  '${membersSnap.error}',
             );
           }
 
-          final members = snapshot.data ?? const <Profile>[];
+          final members = membersSnap.data ?? const <Profile>[];
           final names = <String, String>{
             for (final p in members) p.uid: p.safeName,
           };
-          // Until profiles load, still offer the group chat.
-          final others = members.where((p) => p.uid != widget.uid).toList();
+          final others =
+              members.where((p) => p.uid != widget.uid).toList();
 
-          return ListView(
-            padding: const EdgeInsets.only(bottom: 16),
-            children: [
-              const _SectionHeader(label: 'Chats'),
-              ListTile(
-                leading: const CircleAvatar(child: Icon(Icons.group)),
-                title: const Text('Family'),
-                subtitle: const Text('Everyone in one room'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => ChatScreen(
-                        uid: widget.uid,
-                        room: const ChatRoom.group(),
-                        title: 'Family',
-                        names: names,
-                        showSenderNames: true,
+          return StreamBuilder<List<ContactLink>>(
+            stream: _contacts.watch(widget.uid),
+            builder: (context, linksSnap) {
+              if (linksSnap.hasError) {
+                return _ErrorText(
+                  message: 'Could not load your contacts.\n\n'
+                      '${linksSnap.error}',
+                );
+              }
+
+              final links = {
+                for (final l in linksSnap.data ?? const <ContactLink>[])
+                  l.uid: l,
+              };
+              final incoming = others
+                  .where((p) =>
+                      links[p.uid]?.incomingRequest(widget.uid) == true)
+                  .toList();
+              final accepted = others
+                  .where((p) => links[p.uid]?.accepted == true)
+                  .toList();
+              final outgoing = others
+                  .where((p) =>
+                      links[p.uid]?.outgoingRequest(widget.uid) == true)
+                  .toList();
+              final addable =
+                  others.where((p) => links[p.uid] == null).toList();
+
+              return ListView(
+                children: [
+                  const _SectionHeader(label: 'Family'),
+                  ListTile(
+                    leading: const CircleAvatar(
+                      child: Icon(Icons.groups_outlined),
+                    ),
+                    title: const Text('Everyone'),
+                    subtitle: const Text('The whole family in one room'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ChatScreen(
+                          uid: widget.uid,
+                          room: const ChatRoom.group(),
+                          title: 'Everyone',
+                          names: names,
+                          showSenderNames: true,
+                        ),
                       ),
                     ),
-                  );
-                },
-              ),
-              const _SectionHeader(label: 'People'),
-              if (others.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 8, 16, 8),
-                  child: Text(
-                    'Nobody else has opened the app yet.',
-                    style: TextStyle(color: Colors.black54),
                   ),
-                )
-              else
-                for (final person in others)
-                  ListTile(
-                    leading: CircleAvatar(child: Text(_initials(person.safeName))),
-                    title: Text(person.safeName),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => _openProfile(names, person),
-                  ),
-            ],
+                  if (incoming.isNotEmpty) ...[
+                    const _SectionHeader(label: 'Requests'),
+                    for (final person in incoming)
+                      ListTile(
+                        leading: CircleAvatar(
+                          child: Text(_initials(person.safeName)),
+                        ),
+                        title: Text(person.safeName),
+                        subtitle: const Text('wants to chat'),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            TextButton(
+                              onPressed: () => _removeLink(person),
+                              child: const Text('Decline'),
+                            ),
+                            FilledButton(
+                              onPressed: () => _accept(person),
+                              child: const Text('Accept'),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                  const _SectionHeader(label: 'Chats'),
+                  if (accepted.isEmpty)
+                    const _Hint('No private chats yet. Add someone below.')
+                  else
+                    for (final person in accepted)
+                      ListTile(
+                        leading: CircleAvatar(
+                          child: Text(_initials(person.safeName)),
+                        ),
+                        title: Text(person.safeName),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => _openProfile(names, person),
+                        onLongPress: () => _confirmRemove(person),
+                      ),
+                  if (outgoing.isNotEmpty) ...[
+                    const _SectionHeader(label: 'Sent'),
+                    for (final person in outgoing)
+                      ListTile(
+                        leading: CircleAvatar(
+                          child: Text(_initials(person.safeName)),
+                        ),
+                        title: Text(person.safeName),
+                        subtitle: const Text('Request sent'),
+                        trailing: TextButton(
+                          onPressed: () => _removeLink(person),
+                          child: const Text('Cancel'),
+                        ),
+                      ),
+                  ],
+                  if (addable.isNotEmpty) ...[
+                    const _SectionHeader(label: 'Add people'),
+                    for (final person in addable)
+                      ListTile(
+                        leading: CircleAvatar(
+                          child: Text(_initials(person.safeName)),
+                        ),
+                        title: Text(person.safeName),
+                        trailing: TextButton.icon(
+                          onPressed: () => _sendRequest(person),
+                          icon: const Icon(Icons.person_add_alt),
+                          label: const Text('Add'),
+                        ),
+                      ),
+                  ],
+                  const SizedBox(height: 12),
+                ],
+              );
+            },
           );
         },
       ),
     );
   }
 
+  Future<void> _confirmRemove(Profile person) async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Remove ${person.safeName}?'),
+        content: const Text(
+          'You will no longer be able to message each other until you add '
+          'one another again.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (yes == true) await _removeLink(person);
+  }
+
   static String _initials(String name) {
     final trimmed = name.trim();
     if (trimmed.isEmpty) return '?';
     return trimmed.substring(0, 1).toUpperCase();
+  }
+}
+
+class _Hint extends StatelessWidget {
+  const _Hint(this.message);
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: Text(
+        message,
+        style: const TextStyle(color: Colors.black54),
+      ),
+    );
+  }
+}
+
+class _ErrorText extends StatelessWidget {
+  const _ErrorText({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(message, textAlign: TextAlign.center),
+      ),
+    );
   }
 }
 

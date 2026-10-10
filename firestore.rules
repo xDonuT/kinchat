@@ -138,6 +138,59 @@ service cloud.firestore {
              isParticipant(convId);
     }
 
+    // ------------------------------------------------------------------
+    // Contacts (friend requests). The id is the same sorted "<uidA>__<uidB>"
+    // pair as the 1:1 conversation. Someone requests, the other accepts, and
+    // only then may the two open a private chat or message each other.
+    // ------------------------------------------------------------------
+    function contactDoc(pairId) {
+      return get(/databases/$(database)/documents/contacts/$(pairId));
+    }
+
+    function areContacts(pairId) {
+      return exists(/databases/$(database)/documents/contacts/$(pairId))
+        && contactDoc(pairId).data.status == 'accepted';
+    }
+
+    match /contacts/{pairId} {
+      allow read: if isMember()
+        && request.auth.uid in resource.data.participants;
+
+      // You may only ever send a request as yourself, and only while pending.
+      allow create: if isMember()
+        && request.resource.data.keys().hasOnly([
+             'participants',
+             'requestedBy',
+             'status',
+             'updatedAt'
+           ])
+        && request.resource.data.participants is list
+        && request.resource.data.participants.size() == 2
+        && request.auth.uid in request.resource.data.participants
+        && request.resource.data.requestedBy == request.auth.uid
+        && request.resource.data.status == 'pending';
+
+      // Accepting is only allowed for the *other* person on a pending request,
+      // and must not change who is involved or who asked.
+      allow update: if isMember()
+        && request.auth.uid in resource.data.participants
+        && resource.data.status == 'pending'
+        && resource.data.requestedBy != request.auth.uid
+        && request.resource.data.keys().hasOnly([
+             'participants',
+             'requestedBy',
+             'status',
+             'updatedAt'
+           ])
+        && request.resource.data.status == 'accepted'
+        && request.resource.data.participants == resource.data.participants
+        && request.resource.data.requestedBy == resource.data.requestedBy;
+
+      // Decline a request, cancel your own, or remove an accepted contact.
+      allow delete: if isMember()
+        && request.auth.uid in resource.data.participants;
+    }
+
     match /conversations/{convId} {
       // Reading the conversation itself is allowed only for its two owners.
       // (A missing document reads as null here and is denied, which is fine:
@@ -151,7 +204,8 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['participants', 'updatedAt'])
         && request.resource.data.participants is list
         && request.resource.data.participants.size() == 2
-        && request.auth.uid in request.resource.data.participants;
+        && request.auth.uid in request.resource.data.participants
+        && areContacts(convId);
 
       // The same two participants can be re-written again (the app does this
       // every time a chat is opened) but the pair can never be extended or
@@ -166,7 +220,8 @@ service cloud.firestore {
         && ((request.resource.data.participants[0] == resource.data.participants[0]
              && request.resource.data.participants[1] == resource.data.participants[1])
             || (request.resource.data.participants[0] == resource.data.participants[1]
-                && request.resource.data.participants[1] == resource.data.participants[0]));
+                && request.resource.data.participants[1] == resource.data.participants[0]))
+        && areContacts(convId);
 
       allow delete: if false;
 
@@ -174,6 +229,7 @@ service cloud.firestore {
         allow read: if mayReadThread(convId);
 
         allow create: if isParticipant(convId)
+          && areContacts(convId)
           && request.resource.data.senderId == request.auth.uid
           && request.resource.data.keys().hasOnly([
                'senderId',
