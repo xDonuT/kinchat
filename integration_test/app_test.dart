@@ -4,9 +4,8 @@ import 'package:integration_test/integration_test.dart';
 import 'package:kinchat/main.dart' as app;
 
 /// Drives the real app on a real Android runtime against the Firebase
-/// emulator suite, including a genuine two-user round trip: the uncle creates
-/// an account and sends a message, signs out, then the nephew creates an
-/// account and must see that message arrive.
+/// emulator suite. Verifies the family room is gone and that the app now
+/// offers only 1:1 chats, with friend-adding living in Settings.
 ///
 /// Requires:
 ///   - the emulator suite running (./run-emulator.sh does this)
@@ -17,10 +16,7 @@ void main() {
 
   // Emails must be unique per run: the emulator keeps its data between runs.
   final stamp = DateTime.now().millisecondsSinceEpoch;
-  final uncleEmail = 'uncle$stamp@test.local';
-  final nephewEmail = 'nephew$stamp@test.local';
-  const uncleMsg = 'hello from the uncle';
-  const nephewReply = 'hi uncle, got it';
+  final email = 'solo$stamp@test.local';
 
   /// Network work against the emulator is not tied to frames, so pumpAndSettle
   /// alone returns too early. Mix in real delays.
@@ -44,95 +40,27 @@ void main() {
     await settle(tester, 2500);
   }
 
-  /// Prints everything readable on screen so a failed run says *why* instead
-  /// of just "0 widgets found".
-  Future<void> dumpScreen(WidgetTester tester, String label) async {
-    debugPrint('\n===== SCREEN DUMP: $label =====');
-    for (final e in find.byType(Text).evaluate()) {
-      debugPrint('  TEXT: ${(e.widget as Text).data}');
-    }
-    for (final e in find.byType(TextFormField).evaluate()) {
-      final f = e.widget as TextFormField;
-      debugPrint('  FIELD: ${f.controller?.text ?? "<no controller>"}');
-    }
-    if (find.byType(CircularProgressIndicator).evaluate().isNotEmpty) {
-      debugPrint('  SPINNER: present (still loading)');
-    }
-    debugPrint('===== END DUMP =====\n');
-  }
-
-  Future<void> signOut(WidgetTester tester) async {
-    await tester.tap(find.byIcon(Icons.logout));
-    await settle(tester, 800);
-    await tester.tap(find.widgetWithText(FilledButton, 'Sign out'));
-    await settle(tester, 1500);
-  }
-
-  Future<void> sendMessage(WidgetTester tester, String text) async {
-    await tester.enterText(find.byType(TextField), text);
-    await settle(tester, 300);
-    await tester.tap(find.byIcon(Icons.send));
-    await settle(tester, 2000);
-  }
-
-  /// The landing screen lists chats; open the shared family room from it.
-  Future<void> openFamilyChat(WidgetTester tester) async {
-    await tester.tap(find.text('Family'));
-    await settle(tester, 2000);
-  }
-
-  testWidgets('uncle sends, nephew receives', (tester) async {
+  testWidgets('home has 1:1 chats only, no family room', (tester) async {
     app.main();
     await settle(tester, 3000);
 
     // --- login screen renders ----------------------------------------
     expect(find.text('KinChat'), findsOneWidget);
     expect(find.text('Sign in'), findsOneWidget);
-    expect(find.text('TEST MODE -'), findsNothing,
-        reason: 'the TEST MODE stripe text is a single banner, not a Text');
 
-    // --- uncle creates an account and sends a message -----------------
-    await createAccount(tester, uncleEmail);
+    // --- register and land on the home screen -------------------------
+    await createAccount(tester, email);
 
-    // Registration lands on the chat list; open the family room.
-    await openFamilyChat(tester);
+    // The shared family room must be gone; only 1:1 chats remain.
+    expect(find.text('FAMILY'), findsNothing);
+    expect(find.text('Everyone'), findsNothing);
+    expect(find.text('CHATS'), findsOneWidget);
 
-    if (find.byIcon(Icons.send).evaluate().isEmpty) {
-      await dumpScreen(tester, 'after Create account');
-      fail('never reached the chat screen after registering');
-    }
-
-    await sendMessage(tester, uncleMsg);
-    expect(find.text(uncleMsg), findsOneWidget,
-        reason: "the uncle should see his own message");
-
-    // --- sign out, nephew signs up ------------------------------------
-    await signOut(tester);
-    for (var i = 0; i < 5 && find.text('Sign in').evaluate().isEmpty; i++) {
-      await settle(tester, 600);
-    }
-    if (find.text('Sign in').evaluate().isEmpty) {
-      await dumpScreen(tester, 'after sign out (login not found)');
-    }
-    expect(find.text('Sign in'), findsOneWidget,
-        reason: 'sign out should return to the login screen');
-
-    await createAccount(tester, nephewEmail);
-    await settle(tester, 2500);
-    await openFamilyChat(tester);
-
-    // --- THE REAL TEST: does the message arrive? ----------------------
-    expect(find.text(uncleMsg), findsOneWidget,
-        reason: 'the nephew must receive the message sent while signed out');
-
-    // --- nephew replies, and both sides are visible -------------------
-    await sendMessage(tester, nephewReply);
-
-    expect(find.text(nephewReply), findsOneWidget);
-    expect(find.text(uncleMsg), findsOneWidget);
-
-    // Hold the finished conversation on screen so run-e2e.sh can grab a
-    // screenshot before it tears the emulator down.
-    await Future<void>.delayed(const Duration(seconds: 25));
+    // Adding a friend now lives in Settings, and the family controls are gone.
+    await tester.tap(find.byIcon(Icons.settings_outlined));
+    await settle(tester, 1200);
+    expect(find.text('Add a friend'), findsOneWidget);
+    expect(find.text('Delete the family'), findsNothing);
+    expect(find.text('FAMILY'), findsNothing);
   });
 }

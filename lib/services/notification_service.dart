@@ -138,14 +138,11 @@ class NotificationService {
     if (nav == null || uid == null || roomId == null || roomId.isEmpty) {
       return;
     }
-    final room = data['room'] == 'group'
-        ? ChatRoom.group()
-        : ChatRoom.private(roomId);
     nav.push(
       MaterialPageRoute<void>(
         builder: (_) => ChatScreen(
           uid: uid,
-          room: room,
+          room: ChatRoom.private(roomId),
           title: data['title']?.toString() ?? 'KinChat',
           names: const {},
         ),

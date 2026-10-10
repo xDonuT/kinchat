@@ -70,10 +70,9 @@ async function senderName(sender) {
   return MEMBER_UID_TO_NAME[sender] || 'KinChat';
 }
 
-// A private 1:1 message: tell the other participant(s) that a message
-// arrived. (Rule-wise a conversation has exactly two people, but we loop
-// defensively so a future group conversation still works.) The sender's text
-// goes in the notification body so it appears without opening the app.
+// A private 1:1 message: tell the other participant that a message arrived.
+// The sender's text goes in the notification body so it appears without
+// opening the app.
 exports.onPrivateMessageCreated = onDocumentCreated(
   'conversations/{convId}/messages/{messageId}',
   async (event) => {
@@ -93,27 +92,6 @@ exports.onPrivateMessageCreated = onDocumentCreated(
       await push(tokens, needle, message.text, {
         room: 'private',
         roomId: convId,
-      });
-    }
-  },
-);
-
-// A message in the family room: tell every other member.
-exports.onGroupMessageCreated = onDocumentCreated(
-  'chats/{chatId}/messages/{messageId}',
-  async (event) => {
-    const message = event.data.data();
-    if (event.params.chatId !== 'main') return;
-    const sender = message && message.senderId;
-    if (!sender || !message.text) return;
-    const needle = await senderName(sender);
-
-    for (const uid of Object.keys(MEMBER_UID_TO_NAME)) {
-      if (uid === sender) continue;
-      const tokens = await tokensFor(uid);
-      await push(tokens, needle, message.text, {
-        room: 'group',
-        roomId: 'main',
       });
     }
   },

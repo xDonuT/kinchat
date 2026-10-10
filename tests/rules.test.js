@@ -42,8 +42,6 @@ if (UIDS.length < 2) {
 const [A, B, C] = UIDS;
 const OUTSIDER = 'rAnDoMpErSoN123';
 
-const MSG = 'chats/main/messages';
-
 /** Sorted, so both people compute the same id for the same pair. */
 const convId = (x, y) => [x, y].sort().join('__');
 const CONV_AB = convId(A, B);
@@ -94,110 +92,11 @@ async function main() {
   console.log(`  members: ${UIDS.join(', ')}\n`);
 
   // === Signed out =====================================================
-  await check('signed-out user cannot list messages', () =>
-    assertFails(getDoc(doc(anon, MSG, 'm1'))));
+  await check('signed-out user cannot read a message', () =>
+    assertFails(getDoc(doc(anon, `conversations/${CONV_AB}/messages`, 'm1'))));
 
   await check('signed-out user cannot write a message', () =>
-    assertFails(setDoc(doc(anon, MSG, 'm1'), goodMessage)));
-
-  // === Group chat: read ==============================================
-  await testEnv.withSecurityRulesDisabled(async (ctx) => {
-    await setDoc(doc(ctx.firestore(), MSG, 'seed'), goodMessage);
-  });
-
-  await check('member A can read messages', () =>
-    assertSucceeds(getDoc(doc(dbFor(A), MSG, 'seed'))));
-
-  await check('member B can read messages', () =>
-    assertSucceeds(getDoc(doc(dbFor(B), MSG, 'seed'))));
-
-  await check('a signed-in stranger cannot read messages', () =>
-    assertFails(getDoc(doc(dbFor(OUTSIDER), MSG, 'seed'))));
-
-  // === Group chat: write =============================================
-  await check('member A can send a message as themselves', () =>
-    assertSucceeds(setDoc(doc(dbFor(A), MSG, 'fromA'), goodMessage)));
-
-  await check('member B can send a message as themselves', () =>
-    assertSucceeds(setDoc(doc(dbFor(B), MSG, 'fromB'), {
-      ...goodMessage,
-      senderId: B,
-    })));
-
-  await check('A cannot forge a message claiming to be from B', () =>
-    assertFails(setDoc(doc(dbFor(A), MSG, 'forged'), {
-      ...goodMessage,
-      senderId: B,
-    })));
-
-  await check('a stranger cannot send a message', () =>
-    assertFails(setDoc(doc(dbFor(OUTSIDER), MSG, 'stranger'), {
-      ...goodMessage,
-      senderId: OUTSIDER,
-    })));
-
-  await check('A cannot send an empty message', () =>
-    assertFails(setDoc(doc(dbFor(A), MSG, 'empty'), {
-      ...goodMessage,
-      text: '',
-    })));
-
-  await check('A cannot send an oversized message', () =>
-    assertFails(setDoc(doc(dbFor(A), MSG, 'huge'), {
-      ...goodMessage,
-      text: 'x'.repeat(2001),
-    })));
-
-  await check('A cannot smuggle extra fields into a message', () =>
-    assertFails(setDoc(doc(dbFor(A), MSG, 'sneaky'), {
-      ...goodMessage,
-      role: 'admin',
-    })));
-
-  await check('any member can delete a group message (clear chat)', () =>
-    assertSucceeds(deleteDoc(doc(dbFor(A), MSG, 'gone'))));
-
-  await check('A can send a reply to a group message', () =>
-    assertSucceeds(setDoc(doc(dbFor(A), MSG, 'reply1'), {
-      ...goodMessage,
-      replyTo: 'fromA',
-      replyToText: 'what i was quoting',
-    })));
-
-  // === Group chat: immutability ======================================
-  await check('A cannot edit a message after sending it', () =>
-    assertFails(setDoc(doc(dbFor(A), MSG, 'fromA'), {
-      ...goodMessage,
-      text: 'edited',
-    })));
-
-  await check('any member can delete a group message', () =>
-    assertSucceeds(deleteDoc(doc(dbFor(A), MSG, 'fromA'))));
-
-  await check('even B may delete a message sent by A', () =>
-    assertSucceeds(deleteDoc(doc(dbFor(B), MSG, 'fromA'))));
-
-  // === Group reactions ===============================================
-  await check('a member can react to a group message', () =>
-    assertSucceeds(setDoc(doc(dbFor(A), `${MSG}/fromA/reactions`, A), { emoji: '❤️' })));
-
-  await check('a member can change their own reaction', () =>
-    assertSucceeds(setDoc(doc(dbFor(A), `${MSG}/fromA/reactions`, A), { emoji: '😂' })));
-
-  await check('a member can remove their own reaction', () =>
-    assertSucceeds(deleteDoc(doc(dbFor(A), `${MSG}/fromA/reactions`, A))));
-
-  await check('a member cannot react on someone else\'s behalf', () =>
-    assertFails(setDoc(doc(dbFor(A), `${MSG}/fromA/reactions`, B), { emoji: '❤️' })));
-
-  await check('a reaction cannot carry extra fields', () =>
-    assertFails(setDoc(doc(dbFor(A), `${MSG}/fromB/reactions`, A), { emoji: '❤️', note: 'x' })));
-
-  await check('a reaction must have an emoji', () =>
-    assertFails(setDoc(doc(dbFor(A), `${MSG}/fromB/reactions`, A), { emoji: '' })));
-
-  await check('a stranger cannot react to a group message', () =>
-    assertFails(setDoc(doc(dbFor(OUTSIDER), `${MSG}/seed/reactions`, OUTSIDER), { emoji: '❤️' })));
+    assertFails(setDoc(doc(anon, `conversations/${CONV_AB}/messages`, 'm1'), goodMessage)));
 
   // === Profiles =======================================================
   await check('a member can read another member\'s profile', () =>
@@ -464,13 +363,8 @@ async function main() {
   await check('a member cannot write outside the known collections', () =>
     assertFails(setDoc(doc(dbFor(A), 'anything', 'else'), { ok: true })));
 
-  await check('a member cannot write to a different chat id', () =>
-    assertFails(setDoc(doc(dbFor(A), 'chats/other/messages', 'm1'), {
-      ...goodMessage,
-    })));
-
   await check('a member cannot add to a subcollection of a message', () =>
-    assertFails(setDoc(doc(dbFor(A), 'chats/main/messages/fromA/replies', 'r1'), {
+    assertFails(setDoc(doc(dbFor(A), `conversations/${CONV_AB}/messages/m1/replies`, 'r1'), {
       text: 'hi',
     })));
 

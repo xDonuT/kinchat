@@ -8,8 +8,8 @@ import '../services/profile_service.dart';
 import 'chat_screen.dart';
 import 'settings_screen.dart';
 
-/// The landing screen: the family group, your 1:1 chats, and any pending
-/// contact requests. Tapping a chat pushes the full chat screen.
+/// The landing screen: your 1:1 chats and any pending contact requests.
+/// Tapping a chat pushes the full chat screen.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.uid, required this.email});
 
@@ -174,26 +174,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
               return ListView(
                 children: [
-                  const _SectionHeader(label: 'Family'),
-                  ListTile(
-                    leading: const CircleAvatar(
-                      child: Icon(Icons.groups_outlined),
-                    ),
-                    title: const Text('Everyone'),
-                    subtitle: const Text('The whole family in one room'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => ChatScreen(
-                          uid: widget.uid,
-                          room: const ChatRoom.group(),
-                          title: 'Everyone',
-                          names: names,
-                          showSenderNames: true,
-                        ),
-                      ),
-                    ),
-                  ),
                   if (incoming.isNotEmpty) ...[
                     const _SectionHeader(label: 'Requests'),
                     for (final person in incoming)

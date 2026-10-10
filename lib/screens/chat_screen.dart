@@ -19,7 +19,6 @@ class ChatScreen extends StatefulWidget {
     required this.room,
     required this.title,
     this.names = const <String, String>{},
-    this.showSenderNames = false,
   });
 
   final String uid;
@@ -28,9 +27,6 @@ class ChatScreen extends StatefulWidget {
 
   /// uid -> display name, used to label bubbles written by other people.
   final Map<String, String> names;
-
-  /// The family room has many authors, so each bubble names its writer.
-  final bool showSenderNames;
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();

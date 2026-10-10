@@ -71,50 +71,6 @@ service cloud.firestore {
     }
 
     // ------------------------------------------------------------------
-    // The family group chat: one shared room, everyone sees everything.
-    // ------------------------------------------------------------------
-    match /chats/main/messages/{messageId} {
-      allow read: if isMember();
-
-      allow create: if isMember()
-        && request.resource.data.senderId == request.auth.uid
-        && request.resource.data.keys().hasOnly([
-             'senderId',
-             'text',
-             'sentAt',
-             'replyTo',
-             'replyToText'
-           ])
-        && request.resource.data.text is string
-        && request.resource.data.text.size() > 0
-        && request.resource.data.text.size() <= 2000
-        && (!('replyTo' in request.resource.data) ||
-            (request.resource.data.replyTo is string
-              && request.resource.data.replyTo.size() <= 100))
-        && (!('replyToText' in request.resource.data) ||
-            (request.resource.data.replyToText is string
-              && request.resource.data.replyToText.size() <= 2000));
-
-      // Messages cannot be altered, but any member may clear the whole chat
-      // (the app batch-deletes every message and its reactions).
-      allow update: if false;
-      allow delete: if isMember();
-    }
-
-    // Reactions to messages in the family room: one doc per (member, message),
-    // and only that member can place their own. Members may delete them too
-    // so the clear-chat bulk removal (of everyone's reactions) is allowed.
-    match /chats/main/messages/{messageId}/reactions/{userId} {
-      allow read: if isMember();
-
-      allow create, update: if isMember()
-        && request.auth.uid == userId
-        && validReaction();
-
-      allow delete: if isMember();
-    }
-
-    // ------------------------------------------------------------------
     // 1:1 conversations. convId is "<uidA>__<uidB>" (sorted, so both
     // people compute the same id). Only those two UIDs can touch it.
     // ------------------------------------------------------------------
@@ -268,9 +224,9 @@ service cloud.firestore {
         allow update: if false;
         allow delete: if isParticipant(convId);
 
-        // Reactions inside a 1:1 thread: as with the group, each member can
-        // only place their own, but both may delete them so clearing the
-        // thread (which removes everyone's reactions) is allowed.
+        // Reactions inside a 1:1 thread: each member can only place their
+        // own, but both may delete them so clearing the thread (which removes
+        // everyone's reactions) is allowed.
         match /reactions/{userId} {
           allow read: if isParticipant(convId);
 

@@ -3,24 +3,17 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/message.dart';
 import '../models/reaction.dart';
 
-/// Where a conversation lives in Firestore.
+/// Where a 1:1 conversation lives in Firestore.
 ///
-/// The family group is a single shared room under `chats/`; private threads
-/// live under `conversations/`, one document per pair of people.
+/// Each private thread lives under `conversations/`, one document per pair of
+/// people, keyed by their sorted UIDs.
 class ChatRoom {
-  const ChatRoom.group()
-      : collection = 'chats',
-        id = 'main',
-        isPrivate = false;
-
   const ChatRoom.private(String conversationId)
       : collection = 'conversations',
-        id = conversationId,
-        isPrivate = true;
+        id = conversationId;
 
   final String collection;
   final String id;
-  final bool isPrivate;
 }
 
 /// Everything the app does with messages.
