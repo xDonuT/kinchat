@@ -436,9 +436,9 @@ class _BubbleState extends State<_Bubble> {
     final mine = widget.isMine;
     final bubbleColor =
         mine ? scheme.primary : scheme.surfaceContainerHighest;
-    final fg = mine ? scheme.onPrimary : scheme.onSurface;
+    final fg = mine ? (Theme.of(context).brightness==Brightness.dark?Colors.white:scheme.onPrimary) : scheme.onSurface;
     final mutedFg =
-        mine ? scheme.onPrimary.withValues(alpha: 0.8) : scheme.onSurfaceVariant;
+        mine ? (Theme.of(context).brightness==Brightness.dark?Colors.white70:scheme.onPrimary.withValues(alpha: 0.8)) : scheme.onSurfaceVariant;
 
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
@@ -680,7 +680,7 @@ class _ReactionChips extends StatelessWidget {
                 e.value > 1 ? '${e.key} ${e.value}' : e.key,
                 style: TextStyle(
                   fontSize: 11,
-                  color: mineIncluded ? scheme.onPrimary : scheme.onSurface,
+                  color: mineIncluded ? (Theme.of(context).brightness==Brightness.dark?Colors.white:scheme.onPrimary) : scheme.onSurface,
                 ),
               ),
             ),

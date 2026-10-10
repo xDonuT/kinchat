@@ -44,7 +44,7 @@ class KinChatApp extends StatelessWidget {
       brightness: brightness,
     ).copyWith(
       primary: mint,
-      onPrimary: dark ? const Color(0xFF0B1912) : const Color(0xFF1C3226),
+      onPrimary: dark ? const Color(0xFF0E1F13) : const Color(0xFF1C3226),
       secondary: sky,
       onSecondary: dark ? const Color(0xFF0C1926) : const Color(0xFF1E2A37),
       surface: bg,
