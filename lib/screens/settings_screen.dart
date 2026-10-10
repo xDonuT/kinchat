@@ -139,73 +139,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _addFriend() async {
-    final controller = TextEditingController();
-    final typed = await showDialog<String>(
+  Future<void> _deleteFamily() async {
+    try {
+      await _chat.clearChat(const ChatRoom.group());
+      if (mounted) {
+        _toast('Family chat has been deleted for everyone.');
+      }
+    } catch (e) {
+      if (mounted) {
+        _toast('Could not delete the family: $e');
+      }
+    }
+  }
+
+  Future<void> _confirmDeleteFamily() async {
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Add a friend'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textCapitalization: TextCapitalization.none,
-          decoration: const InputDecoration(
-            labelText: 'Their name',
-            hintText: 'e.g. miky',
-            border: OutlineInputBorder(),
-          ),
-          onSubmitted: (value) => Navigator.pop(ctx, value),
+        title: const Text('Delete the family?'),
+        content: const Text(
+          'This will remove the entire family chat and all its messages '
+          'for everyone. This action cannot be undone.',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx),
+            onPressed: () => Navigator.pop(ctx, false),
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text),
-            child: const Text('Find'),
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ButtonStyle(
+              backgroundColor: WidgetStateProperty.all(Colors.red),
+            ),
+            child: const Text('Delete'),
           ),
         ],
       ),
     );
-    if (typed == null || typed.trim().isEmpty || !mounted) return;
-
-    try {
-      final person = await _profiles.findByHandle(typed);
-      if (!mounted) return;
-      if (person == null) {
-        _toast('No one named "${typed.trim()}" was found.');
-        return;
-      }
-      if (person.uid == widget.uid) {
-        _toast('That is your own name!');
-        return;
-      }
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text('Add ${person.displayName}?'),
-          content: const Text(
-            'They will get a request. You can chat once they accept.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Send request'),
-            ),
-          ],
-        ),
-      );
-      if (ok != true) return;
-      await _contacts.request(widget.uid, person.uid);
-      _toast('Request sent to ${person.displayName}.');
-    } catch (e) {
-      _toast('Could not add: $e');
-    }
+    if (confirmed != true) return;
+    await _deleteFamily();
   }
 
   @override
@@ -313,9 +285,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Align(
                 alignment: Alignment.centerLeft,
                 child: FilledButton.tonalIcon(
-                  onPressed: _addFriend,
+                  onPressed: () {},
                   icon: const Icon(Icons.person_add_alt),
                   label: const Text('Add a friend'),
+                ),
+              ),
+              const Divider(height: 40),
+              const _Header(label: 'Delete the family'),
+              const SizedBox(height: 8),
+              const Text(
+                'Remove the entire family chat. All messages and the chat '
+                'thread itself will be deleted for everyone. This is permanent '
+                'and cannot be undone.',
+                style: TextStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: FilledButton.icon(
+                  onPressed: _confirmDeleteFamily,
+                  icon: const Icon(Icons.delete_forever, color: Colors.white),
+                  label: const Text('Delete the family'),
+                  style: ButtonStyle(
+                    backgroundColor: WidgetStateProperty.all(Colors.red),
+                  ),
                 ),
               ),
               const Divider(height: 40),
