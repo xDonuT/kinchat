@@ -8,8 +8,8 @@ import '../services/profile_service.dart';
 import 'chat_screen.dart';
 import 'settings_screen.dart';
 
-/// The landing screen: the family group, your 1:1 chats, and the people you
-/// can add. Tapping a chat pushes the full chat screen.
+/// The landing screen: the family group, your 1:1 chats, and any pending
+/// contact requests. Tapping a chat pushes the full chat screen.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.uid, required this.email});
 
@@ -84,15 +84,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
-  }
-
-  Future<void> _sendRequest(Profile person) async {
-    try {
-      await _contacts.request(widget.uid, person.uid);
-      _toast('Request sent to ${person.safeName}.');
-    } catch (e) {
-      _toast('Could not send the request: $e');
-    }
   }
 
   Future<void> _accept(Profile person) async {
@@ -179,9 +170,7 @@ class _HomeScreenState extends State<HomeScreen> {
               final outgoing = others
                   .where((p) =>
                       links[p.uid]?.outgoingRequest(widget.uid) == true)
-                  .toList();
-              final addable =
-                  others.where((p) => links[p.uid] == null).toList();
+                   .toList();
 
               return ListView(
                 children: [
@@ -231,7 +220,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                   const _SectionHeader(label: 'Chats'),
                   if (accepted.isEmpty)
-                    const _Hint('No private chats yet. Add someone below.')
+                    const _Hint('No private chats yet. Add a friend from Settings.')
                   else
                     for (final person in accepted)
                       ListTile(
@@ -255,21 +244,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         trailing: TextButton(
                           onPressed: () => _removeLink(person),
                           child: const Text('Cancel'),
-                        ),
-                      ),
-                  ],
-                  if (addable.isNotEmpty) ...[
-                    const _SectionHeader(label: 'Add people'),
-                    for (final person in addable)
-                      ListTile(
-                        leading: CircleAvatar(
-                          child: Text(_initials(person.safeName)),
-                        ),
-                        title: Text(person.safeName),
-                        trailing: TextButton.icon(
-                          onPressed: () => _sendRequest(person),
-                          icon: const Icon(Icons.person_add_alt),
-                          label: const Text('Add'),
                         ),
                       ),
                   ],

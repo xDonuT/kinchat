@@ -20,6 +20,8 @@ const {
   setDoc,
   deleteDoc,
   addDoc,
+  collection,
+  getDocs,
   serverTimestamp,
 } = require('firebase/firestore');
 
@@ -233,6 +235,28 @@ async function main() {
 
   await check('a member cannot delete a profile', () =>
     assertFails(deleteDoc(doc(dbFor(A), 'users', A))));
+
+  // === Handle index (add by name) ====================================
+  await check('a member can claim their own handle', () =>
+    assertSucceeds(setDoc(doc(dbFor(A), 'handles', 'matmat'), {
+      uid: A,
+      name: 'matmat',
+    })));
+
+  await check('a handle cannot be claimed for another user', () =>
+    assertFails(setDoc(doc(dbFor(A), 'handles', 'someoneelse'), {
+      uid: B,
+      name: 'someoneelse',
+    })));
+
+  await check('a member can look a handle up by exact name', () =>
+    assertSucceeds(getDoc(doc(dbFor(B), 'handles', 'matmat'))));
+
+  await check('the handle collection cannot be listed', () =>
+    assertFails(getDocs(collection(dbFor(B), 'handles'))));
+
+  await check('a stranger cannot read a handle', () =>
+    assertFails(getDoc(doc(dbFor(OUTSIDER), 'handles', 'matmat'))));
 
   // === Contacts (add-first / friend requests) ========================
   const contact = (x, y, requestedBy, status) => ({

@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../models/profile.dart';
 import '../services/chat_service.dart';
+import '../services/contacts_service.dart';
 import '../services/profile_service.dart';
 import '../services/theme_service.dart';
 import '../services/wallpaper_service.dart';
@@ -24,6 +25,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final ProfileService _profiles = ProfileService();
   final ChatService _chat = ChatService();
+  final ContactsService _contacts = ContactsService();
   final TextEditingController _name = TextEditingController();
   String? _wallpaperPath;
   bool _saving = false;
@@ -132,6 +134,80 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  void _toast(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _addFriend() async {
+    final controller = TextEditingController();
+    final typed = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add a friend'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.none,
+          decoration: const InputDecoration(
+            labelText: 'Their name',
+            hintText: 'e.g. miky',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (value) => Navigator.pop(ctx, value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            child: const Text('Find'),
+          ),
+        ],
+      ),
+    );
+    if (typed == null || typed.trim().isEmpty || !mounted) return;
+
+    try {
+      final person = await _profiles.findByHandle(typed);
+      if (!mounted) return;
+      if (person == null) {
+        _toast('No one named "${typed.trim()}" was found.');
+        return;
+      }
+      if (person.uid == widget.uid) {
+        _toast('That is your own name!');
+        return;
+      }
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('Add ${person.displayName}?'),
+          content: const Text(
+            'They will get a request. You can chat once they accept.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Send request'),
+            ),
+          ],
+        ),
+      );
+      if (ok != true) return;
+      await _contacts.request(widget.uid, person.uid);
+      _toast('Request sent to ${person.displayName}.');
+    } catch (e) {
+      _toast('Could not add: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -223,6 +299,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   value: ThemeService.instance.darkMode,
                   onChanged: (value) =>
                       ThemeService.instance.setDarkMode(value),
+                ),
+              ),
+              const Divider(height: 40),
+              const _Header(label: 'Add a friend'),
+              const SizedBox(height: 8),
+              const Text(
+                'Type the exact name they use in KinChat, then send a request. '
+                'They must accept before you can chat.',
+                style: TextStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: FilledButton.tonalIcon(
+                  onPressed: _addFriend,
+                  icon: const Icon(Icons.person_add_alt),
+                  label: const Text('Add a friend'),
                 ),
               ),
               const Divider(height: 40),

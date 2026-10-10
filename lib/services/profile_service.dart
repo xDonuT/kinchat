@@ -41,11 +41,24 @@ class ProfileService {
     if (trimmed.length > 60) {
       throw ArgumentError('Name must be 60 characters or fewer.');
     }
+    final previous = await _db.collection('users').doc(uid).get();
+    final oldName = (previous.data()?['displayName'] as String?) ?? '';
+    // Claim the new name first: if someone already answers to it the write is
+    // rejected, so we leave the profile untouched rather than half-renamed.
+    await _writeHandle(uid, trimmed);
     await _db.collection('users').doc(uid).set({
       'displayName': trimmed,
       'email': email,
       'updatedAt': FieldValue.serverTimestamp(),
     });
+    final oldHandle = handleFor(oldName);
+    if (oldHandle.isNotEmpty && oldHandle != handleFor(trimmed)) {
+      try {
+        await _db.collection('handles').doc(oldHandle).delete();
+      } catch (_) {
+        // Not fatal - the name is already changed.
+      }
+    }
   }
 
   /// Makes sure your profile exists. Safe to call on every launch: it is a
@@ -57,13 +70,18 @@ class ProfileService {
     final existing = await ref.get();
     if (existing.exists) {
       final current = Profile.fromDoc(existing);
-      if (current.displayName.trim().isNotEmpty) return;
+      if (current.displayName.trim().isNotEmpty) {
+        // Keep the name->uid index in step even for older profiles.
+        await _writeHandle(uid, current.displayName.trim());
+        return;
+      }
       // Document exists but has no usable name yet - fill it in.
       await ref.set({
         'displayName': name,
         'email': email,
         'updatedAt': FieldValue.serverTimestamp(),
       });
+      await _writeHandle(uid, name);
       return;
     }
 
@@ -72,6 +90,40 @@ class ProfileService {
       'email': email,
       'updatedAt': FieldValue.serverTimestamp(),
     });
+    await _writeHandle(uid, name);
+  }
+
+  /// Normalised key for looking someone up by the name they go by. Lower case
+  /// so lookups are case-insensitive, and '/' swapped out as it is illegal in
+  /// a Firestore document id.
+  static String handleFor(String name) =>
+      name.trim().toLowerCase().replaceAll('/', '-');
+
+  CollectionReference<Map<String, dynamic>> get _handles =>
+      _db.collection('handles');
+
+  Future<void> _writeHandle(String uid, String name) async {
+    final handle = handleFor(name);
+    if (handle.isEmpty) return;
+    await _handles.doc(handle).set({'uid': uid, 'name': name.trim()});
+  }
+
+  /// Find a member by the exact name they use (case-insensitive). Returns null
+  /// when nobody answers to that name. The handle collection cannot be listed,
+  /// so this only ever resolves a name you already know.
+  Future<Profile?> findByHandle(String name) async {
+    final handle = handleFor(name);
+    if (handle.isEmpty) return null;
+    final doc = await _handles.doc(handle).get();
+    if (!doc.exists) return null;
+    final data = doc.data() ?? const <String, dynamic>{};
+    final uid = data['uid'] as String?;
+    if (uid == null) return null;
+    return Profile(
+      uid: uid,
+      displayName: (data['name'] as String?) ?? name.trim(),
+      email: '',
+    );
   }
 
   /// A friendly starting name, derived from the email local part.

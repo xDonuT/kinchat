@@ -139,6 +139,23 @@ service cloud.firestore {
     }
 
     // ------------------------------------------------------------------
+    // Handle index: lowercase name -> uid, so a member can add someone by
+    // typing their exact name. Only exact lookups (get) are allowed; the
+    // collection cannot be listed, so it never leaks the member list.
+    // ------------------------------------------------------------------
+    match /handles/{handle} {
+      allow get: if isMember();
+      allow list: if false;
+
+      allow create, update: if isMember()
+        && request.resource.data.keys().hasOnly(['uid', 'name'])
+        && request.resource.data.uid == request.auth.uid;
+
+      allow delete: if isMember()
+        && resource.data.uid == request.auth.uid;
+    }
+
+    // ------------------------------------------------------------------
     // Contacts (friend requests). The id is the same sorted "<uidA>__<uidB>"
     // pair as the 1:1 conversation. Someone requests, the other accepts, and
     // only then may the two open a private chat or message each other.
