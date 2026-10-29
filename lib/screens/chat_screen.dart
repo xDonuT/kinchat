@@ -1,14 +1,15 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'dart:ui' as ui;
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/message.dart';
 import '../models/reaction.dart';
@@ -43,12 +44,44 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _input = TextEditingController();
   String? _wallpaperPath;
   Message? _replyTo;
+  Timer? _draftTimer;
+
+  String get _draftKey => 'chat_draft_${widget.uid}_${widget.room.id}';
 
   @override
   void initState() {
     super.initState();
     _loadWallpaper();
+    _input.addListener(_onDraftChanged);
+    _restoreDraft();
     NotificationService.instance.setCurrentRoom(widget.room.id);
+  }
+
+  Future<void> _restoreDraft() async {
+    final draft = (await SharedPreferences.getInstance()).getString(_draftKey);
+    if (!mounted || draft == null || draft.isEmpty || _input.text.isNotEmpty) {
+      return;
+    }
+    _input.value = TextEditingValue(
+      text: draft,
+      selection: TextSelection.collapsed(offset: draft.length),
+    );
+  }
+
+  void _onDraftChanged() {
+    _draftTimer?.cancel();
+    _draftTimer = Timer(const Duration(milliseconds: 400), () {
+      _persistDraft(_input.text);
+    });
+  }
+
+  Future<void> _persistDraft(String text) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (text.trim().isEmpty) {
+      await prefs.remove(_draftKey);
+    } else {
+      await prefs.setString(_draftKey, text);
+    }
   }
 
   Future<void> _loadWallpaper() async {
@@ -59,6 +92,9 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     NotificationService.instance.setCurrentRoom(null);
+    _draftTimer?.cancel();
+    _input.removeListener(_onDraftChanged);
+    unawaited(_persistDraft(_input.text));
     _input.dispose();
     super.dispose();
   }
@@ -320,23 +356,41 @@ class _MessageList extends StatefulWidget {
 
 class _MessageListState extends State<_MessageList> {
   final ScrollController _scroll = ScrollController();
+  bool _atBottom = true;
+  int _unseen = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    if (!_scroll.hasClients) return;
+    final atBottom = _scroll.position.pixels < 120;
+    if (atBottom == _atBottom) return;
+    setState(() {
+      _atBottom = atBottom;
+      if (atBottom) _unseen = 0;
+    });
+  }
 
   @override
   void didUpdateWidget(_MessageList old) {
     super.didUpdateWidget(old);
-    if (widget.messages.length > old.messages.length) {
+    final added = widget.messages.length - old.messages.length;
+    if (added > 0) {
       // Follow new messages while at the bottom, or when the new message is
       // ours. Reading old messages is not interrupted by someone else.
       final latest = widget.messages.last;
       final mine = latest.senderId == widget.myUid;
-      if (mine || _isNearBottom) _scrollToBottom();
+      if (mine || _atBottom) {
+        _unseen = 0;
+        _scrollToBottom();
+      } else {
+        _unseen += added;
+      }
     }
-  }
-
-  /// The list is reverse-anchored, so 0 is the newest message.
-  bool get _isNearBottom {
-    if (!_scroll.hasClients) return true;
-    return _scroll.position.pixels < 120;
   }
 
   void _scrollToBottom() {
@@ -348,8 +402,15 @@ class _MessageListState extends State<_MessageList> {
     );
   }
 
+  void _jumpToLatest() {
+    HapticFeedback.selectionClick();
+    if (_unseen != 0) setState(() => _unseen = 0);
+    _scrollToBottom();
+  }
+
   @override
   void dispose() {
+    _scroll.removeListener(_onScroll);
     _scroll.dispose();
     super.dispose();
   }
@@ -377,14 +438,46 @@ class _MessageListState extends State<_MessageList> {
       );
     }
 
+    final showJump = !_atBottom || _unseen > 0;
+
     // Reversing both the children and the scroll axis keeps the historical
     // order but anchors the viewport to the newest message on first open.
-    return ListView.builder(
-      reverse: true,
-      controller: _scroll,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      itemCount: items.length,
-      itemBuilder: (context, i) => items[items.length - 1 - i],
+    return Stack(
+      children: [
+        ListView.builder(
+          reverse: true,
+          controller: _scroll,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          itemCount: items.length,
+          itemBuilder: (context, i) => items[items.length - 1 - i],
+        ),
+        Positioned(
+          right: 16,
+          bottom: 12,
+          child: IgnorePointer(
+            ignoring: !showJump,
+            child: AnimatedScale(
+              scale: showJump ? 1 : 0.85,
+              duration: const Duration(milliseconds: 150),
+              curve: Curves.easeOut,
+              child: AnimatedOpacity(
+                opacity: showJump ? 1 : 0,
+                duration: const Duration(milliseconds: 150),
+                child: FloatingActionButton.small(
+                  heroTag: null,
+                  tooltip: 'Jump to latest',
+                  onPressed: _jumpToLatest,
+                  child: Badge.count(
+                    count: _unseen,
+                    isLabelVisible: _unseen > 0,
+                    child: const Icon(Icons.keyboard_arrow_down),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -439,6 +532,7 @@ class _Bubble extends StatefulWidget {
 
 class _BubbleState extends State<_Bubble> {
   static const String _replyAction = '__reply__';
+  static const String _copyAction = '__copy__';
 
   /// How far the bubble has slid to the right while preparing a reply.
   double _slide = 0;
@@ -563,6 +657,13 @@ class _BubbleState extends State<_Bubble> {
                 title: const Text('Reply'),
                 onTap: () => Navigator.pop(ctx, _replyAction),
               ),
+              if (!widget.message.isImage && widget.message.text.isNotEmpty)
+                ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.copy),
+                  title: const Text('Copy'),
+                  onTap: () => Navigator.pop(ctx, _copyAction),
+                ),
             ],
           ),
         ),
@@ -571,6 +672,15 @@ class _BubbleState extends State<_Bubble> {
 
     if (picked == _replyAction) {
       widget.onReply(widget.message);
+      return;
+    }
+
+    if (picked == _copyAction) {
+      await Clipboard.setData(ClipboardData(text: widget.message.text));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Copied')));
+      }
       return;
     }
 
