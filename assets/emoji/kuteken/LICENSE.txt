@@ -1,0 +1,6 @@
+Kuteken Pixel Art Emoji
+Source: https://kuteken.itch.io/pixel-art-emoji
+License: CC0 1.0 Universal (public domain dedication)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+The PNGs in this directory are cropped from the original Kuteken sprite sheet.

@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/message.dart';
 import '../models/reaction.dart';
 import '../services/chat_service.dart';
+import '../services/kuteken_emoji.dart';
 import '../services/notification_service.dart';
 import '../services/wallpaper_service.dart';
 import 'image_viewer_screen.dart';
@@ -517,7 +518,7 @@ class _Bubble extends StatefulWidget {
     required this.onReply,
   });
 
-  static const reactionEmojis = ['❤️', '👍', '😂', '🔥', '😮', '🥺'];
+  static const reactionEmojis = ['❤️', '😂', '😡', '🥺', '🤯', '🥳'];
 
   final Message message;
   final bool isMine;
@@ -645,7 +646,11 @@ class _BubbleState extends State<_Bubble> {
                               : null,
                           shape: BoxShape.circle,
                         ),
-                        child: Text(e, style: const TextStyle(fontSize: 28)),
+                        child: KutekenEmoji(
+                          e,
+                          size: 28,
+                          fallbackStyle: const TextStyle(fontSize: 28),
+                        ),
                       ),
                     ),
                 ],
@@ -787,7 +792,7 @@ class _BubbleState extends State<_Bubble> {
                                       ),
                                     ),
                                   ),
-                                  child: Text(
+                                  child: KutekenEmojiText(
                                     _clamp(widget.message.replyToText),
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
@@ -806,7 +811,7 @@ class _BubbleState extends State<_Bubble> {
                               else
                                 Align(
                                   alignment: Alignment.centerLeft,
-                                  child: Text(
+                                  child: KutekenEmojiText(
                                     widget.message.text,
                                     style: TextStyle(color: fg, fontSize: 16),
                                   ),
@@ -979,16 +984,34 @@ class _ReactionChips extends StatelessWidget {
                 color: mineIncluded ? scheme.primary : scheme.surface,
                 borderRadius: BorderRadius.circular(6),
               ),
-              child: Text(
-                e.value > 1 ? '${e.key} ${e.value}' : e.key,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: mineIncluded
-                      ? (Theme.of(context).brightness == Brightness.dark
-                            ? Colors.white
-                            : scheme.onPrimary)
-                      : scheme.onSurface,
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  KutekenEmoji(
+                    e.key,
+                    size: 14,
+                    fallbackStyle: TextStyle(
+                      fontSize: 11,
+                      color: mineIncluded
+                          ? (Theme.of(context).brightness == Brightness.dark
+                                ? Colors.white
+                                : scheme.onPrimary)
+                          : scheme.onSurface,
+                    ),
+                  ),
+                  if (e.value > 1)
+                    Text(
+                      ' ${e.value}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: mineIncluded
+                            ? (Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.white
+                                  : scheme.onPrimary)
+                            : scheme.onSurface,
+                      ),
+                    ),
+                ],
               ),
             ),
         ],
@@ -1104,7 +1127,7 @@ class _Composer extends StatelessWidget {
                   Icon(Icons.reply, size: 16, color: accent),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
+                    child: KutekenEmojiText(
                       _clamp(reply.preview),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
