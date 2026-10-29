@@ -1,9 +1,13 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
-import 'dart:ui' show PointMode;
+import 'dart:ui' as ui;
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../models/message.dart';
@@ -11,6 +15,7 @@ import '../models/reaction.dart';
 import '../services/chat_service.dart';
 import '../services/notification_service.dart';
 import '../services/wallpaper_service.dart';
+import 'image_viewer_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({
@@ -34,6 +39,7 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final ChatService _chat = ChatService();
+  final ImagePicker _picker = ImagePicker();
   final TextEditingController _input = TextEditingController();
   String? _wallpaperPath;
   Message? _replyTo;
@@ -69,7 +75,7 @@ class _ChatScreenState extends State<ChatScreen> {
         senderId: widget.uid,
         text: text,
         replyTo: reply?.id ?? '',
-        replyToText: reply?.text ?? '',
+        replyToText: reply?.preview ?? '',
       );
     } catch (e) {
       if (!mounted) return;
@@ -82,6 +88,84 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _startReply(Message message) {
     if (mounted) setState(() => _replyTo = message);
+  }
+
+  Future<void> _pickAndSendPhoto() async {
+    XFile? picked;
+    try {
+      picked = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 80,
+        requestFullMetadata: false,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open the gallery: $e')),
+        );
+      }
+      return;
+    }
+    if (picked == null || !mounted) return;
+
+    final Uint8List bytes;
+    final int width;
+    final int height;
+    try {
+      bytes = await picked.readAsBytes();
+      // Reading only the header avoids decoding the whole photo twice.
+      final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+      final descriptor = await ui.ImageDescriptor.encoded(buffer);
+      width = descriptor.width;
+      height = descriptor.height;
+      descriptor.dispose();
+      buffer.dispose();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not read that photo: $e')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+
+    final reply = _replyTo;
+    setState(() => _replyTo = null);
+
+    final progress = ValueNotifier<double>(0);
+    final dialogClosed = showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _UploadDialog(progress: progress),
+    );
+
+    try {
+      await _chat.sendImage(
+        room: widget.room,
+        senderId: widget.uid,
+        bytes: bytes,
+        width: width,
+        height: height,
+        replyTo: reply?.id ?? '',
+        replyToText: reply?.preview ?? '',
+        onProgress: (value) => progress.value = value,
+      );
+    } catch (e) {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        setState(() => _replyTo = reply);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Could not send photo: $e')));
+      }
+      unawaited(dialogClosed.whenComplete(progress.dispose));
+      return;
+    }
+
+    if (mounted) Navigator.of(context, rootNavigator: true).pop();
+    unawaited(dialogClosed.whenComplete(progress.dispose));
   }
 
   void _cancelReply() {
@@ -135,9 +219,7 @@ class _ChatScreenState extends State<ChatScreen> {
             Positioned.fill(
               child: RepaintBoundary(
                 child: _DitherBackground(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .primary
+                  color: Theme.of(context).colorScheme.primary
                       .withValues(alpha: 0.07),
                 ),
               ),
@@ -154,7 +236,8 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
               Positioned.fill(
                 child: ColoredBox(
-                  color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.45),
+                  color: Theme.of(context).colorScheme.surface
+                      .withValues(alpha: 0.45),
                 ),
               ),
             ],
@@ -203,6 +286,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 _Composer(
                   controller: _input,
                   onSend: _send,
+                  onPickPhoto: _pickAndSendPhoto,
                   replyTo: _replyTo,
                   onCancelReply: _cancelReply,
                 ),
@@ -241,19 +325,27 @@ class _MessageListState extends State<_MessageList> {
   void didUpdateWidget(_MessageList old) {
     super.didUpdateWidget(old);
     if (widget.messages.length > old.messages.length) {
-      _scrollToBottom();
+      // Follow new messages while at the bottom, or when the new message is
+      // ours. Reading old messages is not interrupted by someone else.
+      final latest = widget.messages.last;
+      final mine = latest.senderId == widget.myUid;
+      if (mine || _isNearBottom) _scrollToBottom();
     }
   }
 
+  /// The list is reverse-anchored, so 0 is the newest message.
+  bool get _isNearBottom {
+    if (!_scroll.hasClients) return true;
+    return _scroll.position.pixels < 120;
+  }
+
   void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scroll.hasClients) return;
-      _scroll.animateTo(
-        _scroll.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
-      );
-    });
+    if (!_scroll.hasClients) return;
+    _scroll.animateTo(
+      0,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+    );
   }
 
   @override
@@ -273,21 +365,26 @@ class _MessageListState extends State<_MessageList> {
         items.add(_DaySeparator(date: day));
         lastDay = day;
       }
-      items.add(_Bubble(
-        message: m,
-        isMine: m.senderId == widget.myUid,
-        room: widget.room,
-        myUid: widget.myUid,
-        chat: widget.chat,
-        onReply: widget.onReply,
-      ));
+      items.add(
+        _Bubble(
+          message: m,
+          isMine: m.senderId == widget.myUid,
+          room: widget.room,
+          myUid: widget.myUid,
+          chat: widget.chat,
+          onReply: widget.onReply,
+        ),
+      );
     }
 
+    // Reversing both the children and the scroll axis keeps the historical
+    // order but anchors the viewport to the newest message on first open.
     return ListView.builder(
+      reverse: true,
       controller: _scroll,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       itemCount: items.length,
-      itemBuilder: (context, i) => items[i],
+      itemBuilder: (context, i) => items[items.length - 1 - i],
     );
   }
 }
@@ -305,16 +402,13 @@ class _DaySeparator extends StatelessWidget {
     final label = day == today
         ? 'Today'
         : day == today.subtract(const Duration(days: 1))
-            ? 'Yesterday'
-            : DateFormat('d MMMM').format(date);
+        ? 'Yesterday'
+        : DateFormat('d MMMM').format(date);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Center(
-        child: Text(
-          label,
-          style: Theme.of(context).textTheme.labelSmall,
-        ),
+        child: Text(label, style: Theme.of(context).textTheme.labelSmall),
       ),
     );
   }
@@ -348,6 +442,82 @@ class _BubbleState extends State<_Bubble> {
 
   /// How far the bubble has slid to the right while preparing a reply.
   double _slide = 0;
+
+  void _openPhoto() {
+    final message = widget.message;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ImageViewerScreen(
+          imageUrl: message.imageUrl,
+          heroTag: 'photo-${message.id}',
+        ),
+      ),
+    );
+  }
+
+  /// A compact, memory-friendly preview. The image is decoded at roughly the
+  /// width it is drawn at, so scrolling never holds a full-resolution bitmap
+  /// per bubble; the full photo is only loaded when it is opened.
+  Widget _photo() {
+    final message = widget.message;
+    final ratio = message.imageWidth > 0 && message.imageHeight > 0
+        ? message.imageWidth / message.imageHeight
+        : 4 / 3;
+
+    return GestureDetector(
+      onTap: _openPhoto,
+      child: Hero(
+        tag: 'photo-${message.id}',
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 240, maxHeight: 300),
+            child: AspectRatio(
+              aspectRatio: ratio,
+              child: Image.network(
+                message.imageUrl,
+                semanticLabel: 'Photo',
+                fit: BoxFit.cover,
+                cacheWidth: 720,
+                filterQuality: FilterQuality.low,
+                gaplessPlayback: true,
+                loadingBuilder: (context, child, progress) {
+                  if (progress == null) return child;
+                  final total = progress.expectedTotalBytes;
+                  return SizedBox(
+                    width: 240,
+                    height: (240 / ratio).clamp(120.0, 300.0),
+                    child: Center(
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          value: total == null
+                              ? null
+                              : progress.cumulativeBytesLoaded / total,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+                errorBuilder: (_, _, _) => SizedBox(
+                  width: 240,
+                  height: 160,
+                  child: Center(
+                    child: Icon(
+                      Icons.broken_image_outlined,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   Future<void> _showReactPicker() async {
     final room = widget.room;
@@ -407,8 +577,11 @@ class _BubbleState extends State<_Bubble> {
     if (picked == null || !mounted) return;
     try {
       if (picked == current) {
-        await widget.chat
-            .unreact(room: room, messageId: id, userId: widget.myUid);
+        await widget.chat.unreact(
+          room: room,
+          messageId: id,
+          userId: widget.myUid,
+        );
       } else if (picked.isNotEmpty) {
         await widget.chat.react(
           room: room,
@@ -419,9 +592,8 @@ class _BubbleState extends State<_Bubble> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not react: $e')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Could not react: $e')));
       }
     }
   }
@@ -430,11 +602,17 @@ class _BubbleState extends State<_Bubble> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final mine = widget.isMine;
-    final bubbleColor =
-        mine ? scheme.primary : scheme.surfaceContainerHighest;
-    final fg = mine ? (Theme.of(context).brightness==Brightness.dark?Colors.white:scheme.onPrimary) : scheme.onSurface;
-    final mutedFg =
-        mine ? (Theme.of(context).brightness==Brightness.dark?Colors.white70:scheme.onPrimary.withValues(alpha: 0.8)) : scheme.onSurfaceVariant;
+    final bubbleColor = mine ? scheme.primary : scheme.surfaceContainerHighest;
+    final fg = mine
+        ? (Theme.of(context).brightness == Brightness.dark
+              ? Colors.white
+              : scheme.onPrimary)
+        : scheme.onSurface;
+    final mutedFg = mine
+        ? (Theme.of(context).brightness == Brightness.dark
+              ? Colors.white70
+              : scheme.onPrimary.withValues(alpha: 0.8))
+        : scheme.onSurfaceVariant;
 
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
@@ -450,106 +628,125 @@ class _BubbleState extends State<_Bubble> {
               child: RepaintBoundary(
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                onLongPress: _showReactPicker,
-                onHorizontalDragUpdate: (details) {
-                  final next = (_slide + details.delta.dx).clamp(0.0, 90.0);
-                  if (next != _slide) setState(() => _slide = next);
-                },
-                onHorizontalDragEnd: (details) {
-                  final wasSlid = _slide;
-                  if (mounted) setState(() => _slide = 0);
-                  final shouldReply =
-                      wasSlid >= 70 || (details.primaryVelocity ?? 0) > 300;
-                  if (shouldReply && wasSlid >= 30) {
-                    widget.onReply(widget.message);
-                  }
-                },
-                onHorizontalDragCancel: () {
-                  if (mounted) setState(() => _slide = 0);
-                },
-                child: Transform.translate(
-                  offset: Offset(_slide, 0),
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(vertical: 6),
-                    child: CustomPaint(
-                      painter: _BubblePainter(color: bubbleColor, mine: mine),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 9,
-                      ),
-                      child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (widget.message.replyToText.isNotEmpty)
-                        Container(
-                          margin: const EdgeInsets.only(bottom: 5),
+                  onLongPress: _showReactPicker,
+                  onHorizontalDragUpdate: (details) {
+                    final next = (_slide + details.delta.dx).clamp(0.0, 90.0);
+                    if (next != _slide) setState(() => _slide = next);
+                  },
+                  onHorizontalDragEnd: (details) {
+                    final wasSlid = _slide;
+                    if (mounted) setState(() => _slide = 0);
+                    final shouldReply =
+                        wasSlid >= 70 || (details.primaryVelocity ?? 0) > 300;
+                    if (shouldReply && wasSlid >= 30) {
+                      widget.onReply(widget.message);
+                    }
+                  },
+                  onHorizontalDragCancel: () {
+                    if (mounted) setState(() => _slide = 0);
+                  },
+                  child: Transform.translate(
+                    offset: Offset(_slide, 0),
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(vertical: 6),
+                      child: CustomPaint(
+                        painter: _BubblePainter(color: bubbleColor, mine: mine),
+                        child: Padding(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 6,
+                            horizontal: 14,
+                            vertical: 9,
                           ),
-                          decoration: BoxDecoration(
-                            color: fg.withValues(alpha: 0.07),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border(
-                              left: BorderSide(
-                                color: fg.withValues(alpha: 0.45),
-                                width: 3,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (widget.message.replyToText.isNotEmpty)
+                                Container(
+                                  margin: const EdgeInsets.only(bottom: 5),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: fg.withValues(alpha: 0.07),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border(
+                                      left: BorderSide(
+                                        color: fg.withValues(alpha: 0.45),
+                                        width: 3,
+                                      ),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    _clamp(widget.message.replyToText),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: mutedFg,
+                                      fontSize: 13,
+                                      height: 1.25,
+                                    ),
+                                  ),
+                                ),
+                              if (widget.message.isImage)
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: _photo(),
+                                )
+                              else
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    widget.message.text,
+                                    style: TextStyle(color: fg, fontSize: 16),
+                                  ),
+                                ),
+                              const SizedBox(height: 2),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (widget.message.isPending) ...[
+                                    Icon(
+                                      Icons.schedule,
+                                      size: 11,
+                                      color: mutedFg,
+                                    ),
+                                    const SizedBox(width: 3),
+                                  ],
+                                  Text(
+                                    DateFormat.Hm().format(
+                                      widget.message.sentAt,
+                                    ),
+                                    style: TextStyle(
+                                      color: mutedFg,
+                                      fontSize: 10,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ),
-                          ),
-                          child: Text(
-                            _clamp(widget.message.replyToText),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: mutedFg,
-                              fontSize: 13,
-                              height: 1.25,
-                            ),
-                          ),
-                        ),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          widget.message.text,
-                          style: TextStyle(color: fg, fontSize: 16),
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (widget.message.isPending) ...[
-                            Icon(Icons.schedule, size: 11, color: mutedFg),
-                            const SizedBox(width: 3),
-                          ],
-                          Text(
-                            DateFormat.Hm().format(widget.message.sentAt),
-                            style: TextStyle(color: mutedFg, fontSize: 10),
-                          ),
-                        ],
-                      ),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: StreamBuilder<List<Reaction>>(
-                          stream: widget.chat
-                              .watchReactions(widget.room, widget.message.id),
-                          builder: (context, snapshot) => _ReactionChips(
-                            reactions: snapshot.data ?? const <Reaction>[],
-                            myUid: widget.myUid,
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: StreamBuilder<List<Reaction>>(
+                                  stream: widget.chat.watchReactions(
+                                    widget.room,
+                                    widget.message.id,
+                                  ),
+                                  builder: (context, snapshot) =>
+                                      _ReactionChips(
+                                        reactions:
+                                            snapshot.data ?? const <Reaction>[],
+                                        myUid: widget.myUid,
+                                      ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                      ],
                     ),
                   ),
                 ),
               ),
-              ),
-              ),
-            ),
             ),
           ],
         ),
@@ -676,7 +873,11 @@ class _ReactionChips extends StatelessWidget {
                 e.value > 1 ? '${e.key} ${e.value}' : e.key,
                 style: TextStyle(
                   fontSize: 11,
-                  color: mineIncluded ? (Theme.of(context).brightness==Brightness.dark?Colors.white:scheme.onPrimary) : scheme.onSurface,
+                  color: mineIncluded
+                      ? (Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white
+                            : scheme.onPrimary)
+                      : scheme.onSurface,
                 ),
               ),
             ),
@@ -694,10 +895,8 @@ class _DitherBackground extends StatelessWidget {
   final Color color;
 
   @override
-  Widget build(BuildContext context) => CustomPaint(
-        painter: _DitherPainter(color),
-        size: Size.infinite,
-      );
+  Widget build(BuildContext context) =>
+      CustomPaint(painter: _DitherPainter(color), size: Size.infinite);
 }
 
 class _DitherPainter extends CustomPainter {
@@ -721,23 +920,55 @@ class _DitherPainter extends CustomPainter {
         points.add(Offset(col * cell + 1, row * cell + 1));
       }
     }
-    canvas.drawPoints(PointMode.points, points, paint);
+    canvas.drawPoints(ui.PointMode.points, points, paint);
   }
 
   @override
   bool shouldRepaint(_DitherPainter oldDelegate) => oldDelegate.color != color;
 }
 
+class _UploadDialog extends StatelessWidget {
+  const _UploadDialog({required this.progress});
+
+  final ValueListenable<double> progress;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Sending photo'),
+      content: ValueListenableBuilder<double>(
+        valueListenable: progress,
+        builder: (context, value, _) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            LinearProgressIndicator(value: value > 0 ? value : null),
+            const SizedBox(height: 10),
+            Text(
+              value >= 1
+                  ? 'Finishing…'
+                  : value > 0
+                  ? '${(value * 100).round()}%'
+                  : 'Starting…',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _Composer extends StatelessWidget {
   const _Composer({
     required this.controller,
     required this.onSend,
+    required this.onPickPhoto,
     required this.onCancelReply,
     this.replyTo,
   });
 
   final TextEditingController controller;
   final VoidCallback onSend;
+  final VoidCallback onPickPhoto;
   final VoidCallback onCancelReply;
   final Message? replyTo;
 
@@ -764,7 +995,7 @@ class _Composer extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      _clamp(reply.text),
+                      _clamp(reply.preview),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontSize: 13),
@@ -778,36 +1009,41 @@ class _Composer extends StatelessWidget {
               ),
             ),
           Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Expanded(
-            child: TextField(
-              controller: controller,
-              minLines: 1,
-              maxLines: 5,
-              textCapitalization: TextCapitalization.sentences,
-              textInputAction: TextInputAction.newline,
-              decoration: InputDecoration(
-                hintText: 'Message',
-                filled: true,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 12,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              IconButton(
+                tooltip: 'Send photo',
+                onPressed: onPickPhoto,
+                icon: const Icon(Icons.add_photo_alternate_outlined),
+              ),
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  minLines: 1,
+                  maxLines: 5,
+                  textCapitalization: TextCapitalization.sentences,
+                  textInputAction: TextInputAction.newline,
+                  decoration: InputDecoration(
+                    hintText: 'Message',
+                    filled: true,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 12,
+                    ),
+                  ),
                 ),
               ),
-            ),
+              const SizedBox(width: 8),
+              IconButton.filled(
+                onPressed: onSend,
+                icon: const Icon(Icons.send),
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
-          IconButton.filled(
-            onPressed: onSend,
-            icon: const Icon(Icons.send),
-          ),
-          ],
-        ),
         ],
       ),
     );

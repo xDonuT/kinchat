@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 
 import 'firebase_options.dart';
@@ -14,14 +15,22 @@ Future<void> connectToEmulators() async {
     return;
   }
 
-  debugPrint('EMULATOR: auth=http://$emulatorHost:$authEmulatorPort '
-      'firestore=$emulatorHost:$firestoreEmulatorPort');
+  debugPrint(
+    'EMULATOR: auth=http://$emulatorHost:$authEmulatorPort '
+    'firestore=$emulatorHost:$firestoreEmulatorPort '
+    'storage=$emulatorHost:$storageEmulatorPort',
+  );
 
   await FirebaseAuth.instance.useAuthEmulator(emulatorHost, authEmulatorPort);
 
   FirebaseFirestore.instance.useFirestoreEmulator(
     emulatorHost,
     firestoreEmulatorPort,
+  );
+
+  FirebaseStorage.instance.useStorageEmulator(
+    emulatorHost,
+    storageEmulatorPort,
   );
 
   // The emulator has no local cache, so keep the app responsive while it is
@@ -34,4 +43,5 @@ Future<void> connectToEmulators() async {
 /// Human-readable summary of where the app is pointed, shown in emulator mode
 /// so it is obvious you are not touching the real database.
 String get emulatorBannerText =>
-    'Emulator: $emulatorHost (auth $authEmulatorPort, firestore $firestoreEmulatorPort)';
+    'Emulator: $emulatorHost (auth $authEmulatorPort, '
+    'firestore $firestoreEmulatorPort, storage $storageEmulatorPort)';

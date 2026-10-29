@@ -42,6 +42,18 @@ if (UIDS.length < 2) {
 const [A, B, C] = UIDS;
 const OUTSIDER = 'rAnDoMpErSoN123';
 
+/** The emulator CLI exports HOST as "host:port"; split it for the test env. */
+function endpoint(envHost, envPort, fallbackPort) {
+  const raw = process.env[envHost] || '';
+  const match = /^([^:]+)(?::(\d+))?$/.exec(raw);
+  return {
+    host: match ? match[1] : '127.0.0.1',
+    port: match && match[2]
+      ? Number(match[2])
+      : Number(process.env[envPort] || fallbackPort),
+  };
+}
+
 /** Sorted, so both people compute the same id for the same pair. */
 const convId = (x, y) => [x, y].sort().join('__');
 const CONV_AB = convId(A, B);
@@ -62,12 +74,17 @@ async function check(name, fn) {
 }
 
 async function main() {
+  const firestore = endpoint(
+    'FIRESTORE_EMULATOR_HOST',
+    'FIRESTORE_EMULATOR_PORT',
+    8080,
+  );
   const testEnv = await initializeTestEnvironment({
     projectId: 'demo-kinchat',
     firestore: {
       rules: RULES,
-      host: process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1',
-      port: Number(process.env.FIRESTORE_EMULATOR_PORT || 8080),
+      host: firestore.host,
+      port: firestore.port,
     },
   });
 
@@ -252,6 +269,53 @@ async function main() {
       text: 'psst',
       sentAt: serverTimestamp(),
     })));
+
+  // === Photo messages ================================================
+  const photo = (senderId = A) => ({
+    senderId,
+    type: 'image',
+    imageUrl: 'https://firebasestorage.googleapis.com/v0/b/demo/o/photo.jpg',
+    imagePath: `conversations/${CONV_AB}/messages/photo1.jpg`,
+    imageWidth: 1200,
+    imageHeight: 900,
+    sentAt: serverTimestamp(),
+  });
+
+  await check('A can send a photo message', () =>
+    assertSucceeds(setDoc(doc(dbFor(A), `conversations/${CONV_AB}/messages`, 'photo1'), photo())));
+
+  await check('B can read the photo message', () =>
+    assertSucceeds(getDoc(doc(dbFor(B), `conversations/${CONV_AB}/messages`, 'photo1'))));
+
+  await check('a photo message must include an image url', () =>
+    assertFails(setDoc(doc(dbFor(A), `conversations/${CONV_AB}/messages`, 'photo2'), {
+      ...photo(),
+      imageUrl: '',
+    })));
+
+  await check('a photo must live under its own conversation', () =>
+    assertFails(setDoc(doc(dbFor(A), `conversations/${CONV_AB}/messages`, 'photo3'), {
+      ...photo(),
+      imagePath: 'conversations/someone-else/messages/photo3.jpg',
+    })));
+
+  await check('a photo must have positive dimensions', () =>
+    assertFails(setDoc(doc(dbFor(A), `conversations/${CONV_AB}/messages`, 'photo4'), {
+      ...photo(),
+      imageWidth: 0,
+    })));
+
+  await check('a photo cannot carry a text body', () =>
+    assertFails(setDoc(doc(dbFor(A), `conversations/${CONV_AB}/messages`, 'photo5'), {
+      ...photo(),
+      text: 'sneaky',
+    })));
+
+  await check('a stranger cannot send a photo', () =>
+    assertFails(setDoc(doc(dbFor(OUTSIDER), `conversations/${CONV_AB}/messages`, 'photo6'), photo(OUTSIDER))));
+
+  await check('a member cannot forge a photo as someone else', () =>
+    assertFails(setDoc(doc(dbFor(A), `conversations/${CONV_AB}/messages`, 'photo7'), photo(B))));
 
   await check('a participant can delete a 1:1 message (clear chat)', () =>
     assertSucceeds(deleteDoc(doc(dbFor(A), `conversations/${CONV_AB}/messages`, 'gone'))));

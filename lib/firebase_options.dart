@@ -21,14 +21,25 @@ const bool useEmulator = bool.fromEnvironment('USE_EMULATOR');
 /// address instead (and that address must be listed in
 /// `android/app/src/main/res/xml/network_security_config.xml`, otherwise
 /// Android blocks the cleartext HTTP request).
-const String emulatorHost =
-    String.fromEnvironment('EMULATOR_HOST', defaultValue: '10.0.2.2');
+const String emulatorHost = String.fromEnvironment(
+  'EMULATOR_HOST',
+  defaultValue: '10.0.2.2',
+);
 
-const int authEmulatorPort =
-    int.fromEnvironment('AUTH_EMULATOR_PORT', defaultValue: 9099);
+const int authEmulatorPort = int.fromEnvironment(
+  'AUTH_EMULATOR_PORT',
+  defaultValue: 9099,
+);
 
-const int firestoreEmulatorPort =
-    int.fromEnvironment('FIRESTORE_EMULATOR_PORT', defaultValue: 8080);
+const int firestoreEmulatorPort = int.fromEnvironment(
+  'FIRESTORE_EMULATOR_PORT',
+  defaultValue: 8080,
+);
+
+const int storageEmulatorPort = int.fromEnvironment(
+  'STORAGE_EMULATOR_PORT',
+  defaultValue: 9199,
+);
 
 /// Default [FirebaseOptions] for use with your Firebase apps.
 ///

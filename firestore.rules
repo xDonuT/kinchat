@@ -35,6 +35,65 @@ service cloud.firestore {
         && request.resource.data.emoji.size() <= 16;
     }
 
+    // Optional quote fields, shared by text and photo messages.
+    function validReplyFields() {
+      return (!('replyTo' in request.resource.data) ||
+          (request.resource.data.replyTo is string
+            && request.resource.data.replyTo.size() <= 100))
+        && (!('replyToText' in request.resource.data) ||
+          (request.resource.data.replyToText is string
+            && request.resource.data.replyToText.size() <= 2000));
+    }
+
+    // The original message shape: a non-empty body capped at 2000 chars.
+    function validTextMessage() {
+      return request.resource.data.keys().hasOnly([
+           'senderId',
+           'text',
+           'sentAt',
+           'replyTo',
+           'replyToText'
+         ])
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 2000
+        && validReplyFields();
+    }
+
+    // A photo message has no body: the image URL/path and its dimensions are
+    // required instead, and the file must sit beside its own message.
+    function validImageMessage(convId) {
+      let d = request.resource.data;
+      return d.keys().hasOnly([
+           'senderId',
+           'type',
+           'imageUrl',
+           'imagePath',
+           'imageWidth',
+           'imageHeight',
+           'sentAt',
+           'replyTo',
+           'replyToText'
+         ])
+        && d.type == 'image'
+        && d.imageUrl is string
+        && d.imageUrl.size() > 0
+        && d.imageUrl.size() <= 2048
+        && d.imagePath is string
+        && d.imagePath.split('/').size() == 4
+        && d.imagePath.split('/')[0] == 'conversations'
+        && d.imagePath.split('/')[1] == convId
+        && d.imagePath.split('/')[2] == 'messages'
+        && d.imagePath.split('/')[3].size() > 0
+        && d.imageWidth is int
+        && d.imageWidth > 0
+        && d.imageWidth <= 10000
+        && d.imageHeight is int
+        && d.imageHeight > 0
+        && d.imageHeight <= 10000
+        && validReplyFields();
+    }
+
     // ------------------------------------------------------------------
     // People: one profile per account, used to show names in the chats.
     // You may only ever write your own.
@@ -204,22 +263,7 @@ service cloud.firestore {
         allow create: if isParticipant(convId)
           && areContacts(convId)
           && request.resource.data.senderId == request.auth.uid
-          && request.resource.data.keys().hasOnly([
-               'senderId',
-               'text',
-               'sentAt',
-               'replyTo',
-               'replyToText'
-             ])
-          && request.resource.data.text is string
-          && request.resource.data.text.size() > 0
-          && request.resource.data.text.size() <= 2000
-          && (!('replyTo' in request.resource.data) ||
-              (request.resource.data.replyTo is string
-                && request.resource.data.replyTo.size() <= 100))
-          && (!('replyToText' in request.resource.data) ||
-              (request.resource.data.replyToText is string
-                && request.resource.data.replyToText.size() <= 2000));
+          && (validTextMessage() || validImageMessage(convId));
 
         allow update: if false;
         allow delete: if isParticipant(convId);

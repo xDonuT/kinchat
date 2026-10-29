@@ -1,0 +1,41 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ------------------------------------------------------------------
+    // The accounts allowed into this bucket. Keep this list in sync with
+    // the isMember() allowlist in firestore.rules.
+    // ------------------------------------------------------------------
+    function isMember() {
+      return request.auth != null
+        && request.auth.uid in [
+          '3Dg3UMznaWTjrpodHCokaPkjEEt1',
+          'LKiCZKuQRPf3BL3NsnSDcRYIKjH2',
+          'BWBzQQl3GCeL8w9tjAY0cyxkzcB2',
+          'cCMfAF6iowWGHdDN5QYRYabe0ng1',
+          'CCQve7XDMBf5srFmzUeJXolsIj92',
+          'Wj7CjQLG5QMkc0eziwG8F7XB52p2'
+        ];
+    }
+
+    // Chat photos live beside the message that references them:
+    //   conversations/<convId>/messages/<messageId>.jpg
+    // Only members may upload or remove them, the content type must be an
+    // image, and a single photo is capped at 8 MB.
+    match /conversations/{convId}/messages/{fileName} {
+      allow read: if isMember();
+
+      allow create: if isMember()
+        && request.resource.size <= 8 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+
+      allow delete: if isMember();
+    }
+
+    // Everything else is off limits. Do not remove this line.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
