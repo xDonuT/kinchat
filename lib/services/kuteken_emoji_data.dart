@@ -1,5 +1,5 @@
 const Map<String, String> kutekanEmojiAssets = <String, String>{
-  r'☹': 'assets/emoji/kutekan/2639.png',
+  r'☹': 'assets/emoji/kuteken/2639.png',
   r'☺': 'assets/emoji/kuteken/263a.png',
   r'❤': 'assets/emoji/kuteken/2764.png',
   r'🐶': 'assets/emoji/kuteken/1f436.png',

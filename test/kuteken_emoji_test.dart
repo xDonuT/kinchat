@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kinchat/services/kuteken_emoji.dart';
-import 'package:kinchat/services/kuteken_emoji_data.dart';
 
 void main() {
   test('normalizes variation selectors and resolves mapped emoji', () {
@@ -15,7 +14,7 @@ void main() {
 
   testWidgets('renders mapped emoji as images', (tester) async {
     await tester.pumpWidget(
-      const MaterialApp(home: Scaffold(body: KutekenEmojiText('a 😂 ❤️ 👍'))),
+      const MaterialApp(home: Scaffold(body: KutekanEmojiText('a 😂 ❤️ 👍'))),
     );
     await tester.pump();
 
@@ -33,7 +32,7 @@ void main() {
 
   testWidgets('does not split larger ZWJ sequences', (tester) async {
     await tester.pumpWidget(
-      const MaterialApp(home: Scaffold(body: KutekenEmojiText('❤️‍🔥'))),
+      const MaterialApp(home: Scaffold(body: KutekanEmojiText('❤️‍🔥'))),
     );
     await tester.pump();
 
@@ -42,7 +41,7 @@ void main() {
   });
 
   test('every mapped asset is bundled', () async {
-    for (final asset in kutekenEmojiAssets.values) {
+    for (final asset in kutekanEmojiAssets.values) {
       final data = await rootBundle.load(asset);
       expect(data.lengthInBytes, greaterThan(0), reason: asset);
     }

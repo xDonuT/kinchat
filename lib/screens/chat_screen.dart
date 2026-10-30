@@ -792,7 +792,7 @@ class _BubbleState extends State<_Bubble> {
                                       ),
                                     ),
                                   ),
-                                  child: KutekenEmojiText(
+                                  child: KutekanEmojiText(
                                     _clamp(widget.message.replyToText),
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
@@ -811,7 +811,7 @@ class _BubbleState extends State<_Bubble> {
                               else
                                 Align(
                                   alignment: Alignment.centerLeft,
-                                  child: KutekenEmojiText(
+                                  child: KutekanEmojiText(
                                     widget.message.text,
                                     style: TextStyle(color: fg, fontSize: 16),
                                   ),
@@ -1127,7 +1127,7 @@ class _Composer extends StatelessWidget {
                   Icon(Icons.reply, size: 16, color: accent),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: KutekenEmojiText(
+                    child: KutekanEmojiText(
                       _clamp(reply.preview),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
