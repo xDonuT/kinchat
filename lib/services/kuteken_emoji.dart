@@ -187,22 +187,17 @@ class KutekanEmojiText extends StatelessWidget {
 
   static const int _maxInlineImages = 50;
 
-  @override
-  Widget build(BuildContext context) {
-    final normalized = normalizeKutekenEmoji(text);
-    if (!_kutekenPattern.hasMatch(normalized)) {
-      return Text(
-        normalized,
-        style: style,
-        maxLines: maxLines,
-        overflow: overflow,
-        textAlign: textAlign,
-      );
+  static String? _cachedNormalized;
+  static List<InlineSpan>? _cachedSpans;
+  static double? _cachedFontSize;
+
+  List<InlineSpan> _buildSpans(String normalized, double fontSize) {
+    if (_cachedNormalized == normalized &&
+        _cachedFontSize == fontSize &&
+        _cachedSpans != null) {
+      return _cachedSpans!;
     }
 
-    final fontSize =
-        style?.fontSize ?? DefaultTextStyle.of(context).style.fontSize ?? 16;
-    final emojiSize = fontSize * 1.18;
     final spans = <InlineSpan>[];
     var start = 0;
     var images = 0;
@@ -235,7 +230,7 @@ class KutekanEmojiText extends StatelessWidget {
         spans.add(
           WidgetSpan(
             alignment: PlaceholderAlignment.middle,
-            child: KutekenEmoji(emoji, size: emojiSize),
+            child: KutekenEmoji(emoji, size: fontSize * 1.18),
           ),
         );
         images++;
@@ -243,6 +238,29 @@ class KutekanEmojiText extends StatelessWidget {
       start = match.end;
     }
     addText(normalized.length);
+
+    _cachedNormalized = normalized;
+    _cachedFontSize = fontSize;
+    _cachedSpans = spans;
+    return spans;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final normalized = normalizeKutekenEmoji(text);
+    if (!_kutekenPattern.hasMatch(normalized)) {
+      return Text(
+        normalized,
+        style: style,
+        maxLines: maxLines,
+        overflow: overflow,
+        textAlign: textAlign,
+      );
+    }
+
+    final fontSize =
+        style?.fontSize ?? DefaultTextStyle.of(context).style.fontSize ?? 16;
+    final spans = _buildSpans(normalized, fontSize);
 
     return Text.rich(
       TextSpan(style: style, children: spans),
