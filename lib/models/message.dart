@@ -7,6 +7,7 @@ class Message {
     required this.text,
     required this.sentAt,
     this.type = 'text',
+    this.gameId = '',
     this.imageUrl = '',
     this.imagePath = '',
     this.imageWidth = 0,
@@ -21,9 +22,12 @@ class Message {
   final String text;
   final DateTime sentAt;
 
-  /// 'text' or 'image'. Messages written before photos existed have no type
-  /// field and are treated as text.
+  /// 'text', 'image', or 'game'. Messages written before photos existed have
+  /// no type field and are treated as text.
   final String type;
+
+  /// Id of the duel document for a game message, or ''.
+  final String gameId;
 
   /// Download URL and Storage path for a photo message. Empty for text.
   final String imageUrl;
@@ -44,10 +48,15 @@ class Message {
   /// briefly for a message that was just sent locally.
   final bool isPending;
 
+  bool get isGame => type == 'game' || gameId.isNotEmpty;
+
   bool get isImage => type == 'image' || imageUrl.isNotEmpty;
 
   /// Short label used when this message is quoted or shown in a notification.
-  String get preview => isImage ? '[Photo]' : text;
+  String get preview {
+    if (isGame) return '[Duel]';
+    return isImage ? '[Photo]' : text;
+  }
 
   factory Message.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data();
@@ -59,6 +68,7 @@ class Message {
       text: data?['text'] as String? ?? '',
       sentAt: stamp?.toDate() ?? DateTime.now(),
       type: data?['type'] as String? ?? (imageUrl.isEmpty ? 'text' : 'image'),
+      gameId: data?['gameId'] as String? ?? '',
       imageUrl: imageUrl,
       imagePath: data?['imagePath'] as String? ?? '',
       imageWidth: (data?['imageWidth'] as num?)?.toInt() ?? 0,

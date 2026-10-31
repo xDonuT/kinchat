@@ -137,6 +137,11 @@ class ChatService {
   /// Uploaded photos are removed from Storage afterwards.
   Future<void> clearChat(ChatRoom room) async {
     final messages = await _messagesFor(room).get();
+    final games = await _db
+        .collection(room.collection)
+        .doc(room.id)
+        .collection('games')
+        .get();
     final imagePaths = <String>[];
     var batch = _db.batch();
     var ops = 0;
@@ -159,6 +164,11 @@ class ChatService {
         if (ops >= 400) await flush();
       }
       batch.delete(message.reference);
+      ops++;
+      if (ops >= 400) await flush();
+    }
+    for (final game in games.docs) {
+      batch.delete(game.reference);
       ops++;
       if (ops >= 400) await flush();
     }

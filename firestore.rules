@@ -94,6 +94,17 @@ service cloud.firestore {
         && validReplyFields();
     }
 
+    // A game message only points at a duel document; the duel itself is in the
+    // games subcollection and can be updated while this message stays immutable.
+    function validGameMessage() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['senderId', 'type', 'gameId', 'sentAt'])
+        && d.type == 'game'
+        && d.gameId is string
+        && d.gameId.size() > 0
+        && d.gameId.size() <= 100;
+    }
+
     // ------------------------------------------------------------------
     // People: one profile per account, used to show names in the chats.
     // You may only ever write your own.
@@ -151,6 +162,44 @@ service cloud.firestore {
       return !isMember() ? false :
              !exists(/databases/$(database)/documents/conversations/$(convId)) ? true :
              isParticipant(convId);
+    }
+
+    // Shape of a duel document. The rules keep it well-formed and limited to
+    // the two people in the conversation; the turn rules live in DuelEngine.
+    function validDuel() {
+      let d = request.resource.data;
+      return d.keys().hasOnly([
+           'participants',
+           'createdBy',
+           'status',
+           'winner',
+           'turn',
+           'turnCount',
+           'shuffleSeed',
+           'players',
+           'log',
+           'createdAt',
+           'updatedAt'
+         ])
+        && d.participants is list
+        && d.participants.size() == 2
+        && request.auth.uid in d.participants
+        && d.createdBy is string
+        && d.createdBy in d.participants
+        && d.status is string
+        && (d.status == 'active' || d.status == 'finished')
+        && d.winner is string
+        && (d.winner == '' || d.winner in d.participants)
+        && d.turn is string
+        && d.turn in d.participants
+        && d.turnCount is int
+        && d.turnCount >= 1
+        && d.turnCount <= 10000
+        && d.shuffleSeed is int
+        && d.players is map
+        && d.players.keys().hasOnly(d.participants)
+        && d.log is list
+        && d.log.size() <= 50;
     }
 
     // ------------------------------------------------------------------
@@ -263,7 +312,7 @@ service cloud.firestore {
         allow create: if isParticipant(convId)
           && areContacts(convId)
           && request.resource.data.senderId == request.auth.uid
-          && (validTextMessage() || validImageMessage(convId));
+          && (validTextMessage() || validImageMessage(convId) || validGameMessage());
 
         allow update: if false;
         allow delete: if isParticipant(convId);
@@ -280,6 +329,23 @@ service cloud.firestore {
 
           allow delete: if isParticipant(convId);
         }
+      }
+
+      match /games/{gameId} {
+        allow read: if isParticipant(convId);
+
+        allow create: if isParticipant(convId)
+          && areContacts(convId)
+          && validDuel()
+          && request.resource.data.createdBy == request.auth.uid;
+
+        allow update: if isParticipant(convId)
+          && areContacts(convId)
+          && validDuel()
+          && request.resource.data.createdBy == resource.data.createdBy
+          && request.resource.data.participants == resource.data.participants;
+
+        allow delete: if isParticipant(convId);
       }
     }
 

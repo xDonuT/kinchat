@@ -14,9 +14,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/message.dart';
 import '../models/reaction.dart';
 import '../services/chat_service.dart';
+import '../services/duel_service.dart';
 import '../services/kuteken_emoji.dart';
 import '../services/notification_service.dart';
 import '../services/wallpaper_service.dart';
+import '../widgets/duel_card.dart';
 import 'image_viewer_screen.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -41,6 +43,7 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final ChatService _chat = ChatService();
+  final DuelService _duel = DuelService();
   final ImagePicker _picker = ImagePicker();
   final TextEditingController _input = TextEditingController();
   String? _wallpaperPath;
@@ -88,6 +91,34 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _loadWallpaper() async {
     final path = await WallpaperService.loadPath();
     if (mounted) setState(() => _wallpaperPath = path);
+  }
+
+  String get _otherUid {
+    final parts = widget.room.id.split('__');
+    if (parts.length != 2) return '';
+    return parts.first == widget.uid ? parts.last : parts.first;
+  }
+
+  Future<void> _startDuel() async {
+    final opponent = _otherUid;
+    if (opponent.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not start a duel in this chat.')),
+      );
+      return;
+    }
+    try {
+      await _duel.createDuel(
+        room: widget.room,
+        uid: widget.uid,
+        opponentUid: opponent,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not start duel: $error')));
+    }
   }
 
   @override
@@ -315,6 +346,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         myUid: widget.uid,
                         room: widget.room,
                         chat: _chat,
+                        names: widget.names,
                         onReply: _startReply,
                       );
                     },
@@ -324,6 +356,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   controller: _input,
                   onSend: _send,
                   onPickPhoto: _pickAndSendPhoto,
+                  onStartDuel: _startDuel,
                   replyTo: _replyTo,
                   onCancelReply: _cancelReply,
                 ),
@@ -342,6 +375,7 @@ class _MessageList extends StatefulWidget {
     required this.myUid,
     required this.room,
     required this.chat,
+    required this.names,
     required this.onReply,
   });
 
@@ -349,6 +383,7 @@ class _MessageList extends StatefulWidget {
   final String myUid;
   final ChatRoom room;
   final ChatService chat;
+  final Map<String, String> names;
   final ValueChanged<Message> onReply;
 
   @override
@@ -434,6 +469,7 @@ class _MessageListState extends State<_MessageList> {
           room: widget.room,
           myUid: widget.myUid,
           chat: widget.chat,
+          names: widget.names,
           onReply: widget.onReply,
         ),
       );
@@ -515,6 +551,7 @@ class _Bubble extends StatefulWidget {
     required this.room,
     required this.myUid,
     required this.chat,
+    required this.names,
     required this.onReply,
   });
 
@@ -525,6 +562,7 @@ class _Bubble extends StatefulWidget {
   final ChatRoom room;
   final String myUid;
   final ChatService chat;
+  final Map<String, String> names;
   final ValueChanged<Message> onReply;
 
   @override
@@ -728,6 +766,7 @@ class _BubbleState extends State<_Bubble> {
               ? Colors.white70
               : scheme.onPrimary.withValues(alpha: 0.8))
         : scheme.onSurfaceVariant;
+    final isGame = widget.message.isGame;
 
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
@@ -743,23 +782,33 @@ class _BubbleState extends State<_Bubble> {
               child: RepaintBoundary(
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onLongPress: _showReactPicker,
-                  onHorizontalDragUpdate: (details) {
-                    final next = (_slide + details.delta.dx).clamp(0.0, 90.0);
-                    if (next != _slide) setState(() => _slide = next);
-                  },
-                  onHorizontalDragEnd: (details) {
-                    final wasSlid = _slide;
-                    if (mounted) setState(() => _slide = 0);
-                    final shouldReply =
-                        wasSlid >= 70 || (details.primaryVelocity ?? 0) > 300;
-                    if (shouldReply && wasSlid >= 30) {
-                      widget.onReply(widget.message);
-                    }
-                  },
-                  onHorizontalDragCancel: () {
-                    if (mounted) setState(() => _slide = 0);
-                  },
+                  onLongPress: isGame ? null : _showReactPicker,
+                  onHorizontalDragUpdate: isGame
+                      ? null
+                      : (details) {
+                          final next = (_slide + details.delta.dx).clamp(
+                            0.0,
+                            90.0,
+                          );
+                          if (next != _slide) setState(() => _slide = next);
+                        },
+                  onHorizontalDragEnd: isGame
+                      ? null
+                      : (details) {
+                          final wasSlid = _slide;
+                          if (mounted) setState(() => _slide = 0);
+                          final shouldReply =
+                              wasSlid >= 70 ||
+                              (details.primaryVelocity ?? 0) > 300;
+                          if (shouldReply && wasSlid >= 30) {
+                            widget.onReply(widget.message);
+                          }
+                        },
+                  onHorizontalDragCancel: isGame
+                      ? null
+                      : () {
+                          if (mounted) setState(() => _slide = 0);
+                        },
                   child: Transform.translate(
                     offset: Offset(_slide, 0),
                     child: Container(
@@ -803,7 +852,23 @@ class _BubbleState extends State<_Bubble> {
                                     ),
                                   ),
                                 ),
-                              if (widget.message.isImage)
+                              if (isGame)
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: DuelCardBubble(
+                                    room: widget.room,
+                                    gameId: widget.message.gameId,
+                                    myUid: widget.myUid,
+                                    myName: widget.names[widget.myUid] ?? 'You',
+                                    opponentName:
+                                        widget.names[_otherUidForRoom(
+                                          widget.room,
+                                          widget.myUid,
+                                        )] ??
+                                        'Opponent',
+                                  ),
+                                )
+                              else if (widget.message.isImage)
                                 Align(
                                   alignment: Alignment.centerLeft,
                                   child: _photo(),
@@ -839,21 +904,23 @@ class _BubbleState extends State<_Bubble> {
                                   ),
                                 ],
                               ),
-                              Align(
-                                alignment: Alignment.centerLeft,
-                                child: StreamBuilder<List<Reaction>>(
-                                  stream: widget.chat.watchReactions(
-                                    widget.room,
-                                    widget.message.id,
+                              if (!isGame)
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: StreamBuilder<List<Reaction>>(
+                                    stream: widget.chat.watchReactions(
+                                      widget.room,
+                                      widget.message.id,
+                                    ),
+                                    builder: (context, snapshot) =>
+                                        _ReactionChips(
+                                          reactions:
+                                              snapshot.data ??
+                                              const <Reaction>[],
+                                          myUid: widget.myUid,
+                                        ),
                                   ),
-                                  builder: (context, snapshot) =>
-                                      _ReactionChips(
-                                        reactions:
-                                            snapshot.data ?? const <Reaction>[],
-                                        myUid: widget.myUid,
-                                      ),
                                 ),
-                              ),
                             ],
                           ),
                         ),
@@ -868,6 +935,12 @@ class _BubbleState extends State<_Bubble> {
       ),
     );
   }
+}
+
+String _otherUidForRoom(ChatRoom room, String myUid) {
+  final parts = room.id.split('__');
+  if (parts.length != 2) return '';
+  return parts.first == myUid ? parts.last : parts.first;
 }
 
 /// A shade lighter of a bubble colour, used for the glossy iPhone-style top
@@ -1095,6 +1168,7 @@ class _Composer extends StatelessWidget {
     required this.controller,
     required this.onSend,
     required this.onPickPhoto,
+    required this.onStartDuel,
     required this.onCancelReply,
     this.replyTo,
   });
@@ -1102,6 +1176,7 @@ class _Composer extends StatelessWidget {
   final TextEditingController controller;
   final VoidCallback onSend;
   final VoidCallback onPickPhoto;
+  final VoidCallback onStartDuel;
   final VoidCallback onCancelReply;
   final Message? replyTo;
 
@@ -1144,6 +1219,11 @@ class _Composer extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
+              IconButton(
+                tooltip: 'Start duel',
+                onPressed: onStartDuel,
+                icon: const Icon(Icons.sports_esports_outlined),
+              ),
               IconButton(
                 tooltip: 'Send photo',
                 onPressed: onPickPhoto,

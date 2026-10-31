@@ -80,21 +80,26 @@ exports.onPrivateMessageCreated = onDocumentCreated(
     const convId = event.params.convId;
     const sender = message && message.senderId;
     const isPhoto = message && (message.type === 'image' || !!message.imageUrl);
-    if (!sender || (!message.text && !isPhoto)) return;
+    const isGame = message && message.type === 'game';
+    if (!sender || (!message.text && !isPhoto && !isGame)) return;
 
     const conv = await db.collection('conversations').doc(convId).get();
     if (!conv.exists) return;
     const participants = conv.data().participants || [];
     const others = participants.filter((p) => p !== sender);
     const needle = await senderName(sender);
-    const body = isPhoto ? '\u{1F4F7} Photo' : message.text;
+    const body = isGame
+      ? '\u{1F3AE} Duel invite'
+      : isPhoto
+      ? '\u{1F4F7} Photo'
+      : message.text;
 
     for (const uid of others) {
       const tokens = await tokensFor(uid);
       await push(tokens, needle, body, {
         room: 'private',
         roomId: convId,
-        type: isPhoto ? 'image' : 'text',
+        type: isGame ? 'game' : isPhoto ? 'image' : 'text',
       });
     }
   },
