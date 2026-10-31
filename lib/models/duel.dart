@@ -312,6 +312,7 @@ class DuelPlayer {
     required this.vulnerable,
     this.poison = 0,
     this.focus = 0,
+    this.ready = false,
     required this.hand,
     required this.drawPile,
     required this.discardPile,
@@ -327,6 +328,7 @@ class DuelPlayer {
   final int vulnerable;
   final int poison;
   final int focus;
+  final bool ready;
   final List<String> hand;
   final List<String> drawPile;
   final List<String> discardPile;
@@ -344,6 +346,7 @@ class DuelPlayer {
     int? vulnerable,
     int? poison,
     int? focus,
+    bool? ready,
     List<String>? hand,
     List<String>? drawPile,
     List<String>? discardPile,
@@ -358,6 +361,7 @@ class DuelPlayer {
     vulnerable: vulnerable ?? this.vulnerable,
     poison: poison ?? this.poison,
     focus: focus ?? this.focus,
+    ready: ready ?? this.ready,
     hand: hand ?? this.hand,
     drawPile: drawPile ?? this.drawPile,
     discardPile: discardPile ?? this.discardPile,
@@ -373,6 +377,7 @@ class DuelPlayer {
     'vulnerable': vulnerable,
     'poison': poison,
     'focus': focus,
+    'ready': ready,
     'hand': hand,
     'drawPile': drawPile,
     'discardPile': discardPile,
@@ -390,6 +395,7 @@ class DuelPlayer {
         vulnerable: (map['vulnerable'] as num?)?.toInt() ?? 0,
         poison: (map['poison'] as num?)?.toInt() ?? 0,
         focus: (map['focus'] as num?)?.toInt() ?? 0,
+        ready: map['ready'] as bool? ?? false,
         hand: _stringList(map['hand']),
         drawPile: _stringList(map['drawPile']),
         discardPile: _stringList(map['discardPile']),
@@ -414,7 +420,7 @@ class DuelState {
   final List<String> participants;
   final String createdBy;
 
-  /// 'active' or 'finished'.
+  /// 'lobby', 'active', or 'finished'.
   final String status;
 
   /// Empty while the duel is active.
@@ -425,6 +431,7 @@ class DuelState {
   final Map<String, DuelPlayer> players;
   final List<DuelLogEntry> log;
 
+  bool get isLobby => status == 'lobby';
   bool get isActive => status == 'active';
   bool get isFinished => status == 'finished';
   int get round => (turnCount ~/ 2) + 1;

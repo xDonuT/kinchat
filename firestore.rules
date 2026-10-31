@@ -187,7 +187,7 @@ service cloud.firestore {
         && d.createdBy is string
         && d.createdBy in d.participants
         && d.status is string
-        && (d.status == 'active' || d.status == 'finished')
+        && (d.status == 'lobby' || d.status == 'active' || d.status == 'finished')
         && d.winner is string
         && (d.winner == '' || d.winner in d.participants)
         && d.turn is string

@@ -4,6 +4,7 @@ import '../models/duel.dart';
 import '../services/chat_service.dart';
 import '../services/duel_service.dart';
 import '../services/duel_sfx.dart';
+import 'duel_cards_screen.dart';
 
 class DuelScreen extends StatefulWidget {
   const DuelScreen({
@@ -30,6 +31,7 @@ class _DuelScreenState extends State<DuelScreen> {
   bool _busy = false;
   late bool _soundEnabled;
   bool _outcomeAnnounced = false;
+  DuelState? _latestState;
 
   @override
   void initState() {
@@ -94,6 +96,52 @@ class _DuelScreenState extends State<DuelScreen> {
     }
   }
 
+  Future<void> _chooseClass(String classId) async {
+    if (_busy) return;
+    DuelSfx.instance.play('card');
+    setState(() => _busy = true);
+    try {
+      await _service.chooseClass(
+        room: widget.room,
+        gameId: widget.gameId,
+        uid: widget.myUid,
+        classId: classId,
+      );
+    } catch (error) {
+      _showError(error);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _setReady(bool ready) async {
+    if (_busy) return;
+    DuelSfx.instance.play(ready ? 'turn' : 'card');
+    setState(() => _busy = true);
+    try {
+      await _service.setReady(
+        room: widget.room,
+        gameId: widget.gameId,
+        uid: widget.myUid,
+        ready: ready,
+      );
+    } catch (error) {
+      _showError(error);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _openCards() {
+    final state = _latestState;
+    if (state == null) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => DuelCardsScreen(state: state, myUid: widget.myUid),
+      ),
+    );
+  }
+
   void _showError(Object error) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -108,7 +156,7 @@ class _DuelScreenState extends State<DuelScreen> {
   }
 
   void _announceOutcome(DuelState state) {
-    if (state.isActive) {
+    if (state.isLobby || state.isActive) {
       _outcomeAnnounced = false;
       return;
     }
@@ -123,6 +171,11 @@ class _DuelScreenState extends State<DuelScreen> {
       appBar: AppBar(
         title: const Text('Duel'),
         actions: [
+          IconButton(
+            tooltip: 'Card library',
+            onPressed: _openCards,
+            icon: const Icon(Icons.menu_book_outlined),
+          ),
           IconButton(
             tooltip: _soundEnabled ? 'Mute sounds' : 'Enable sounds',
             onPressed: _toggleSound,
@@ -159,7 +212,20 @@ class _DuelScreenState extends State<DuelScreen> {
             return const Center(child: Text('Duel unavailable.'));
           }
 
+          _latestState = state;
           _announceOutcome(state);
+          if (state.isLobby) {
+            return _LobbyView(
+              state: state,
+              myUid: widget.myUid,
+              myName: widget.myName,
+              opponentName: widget.opponentName,
+              busy: _busy,
+              onChooseClass: _chooseClass,
+              onReadyChanged: _setReady,
+            );
+          }
+
           final myTurn = state.isActive && state.turn == widget.myUid;
 
           return SafeArea(
@@ -210,6 +276,296 @@ class _DuelScreenState extends State<DuelScreen> {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+class _LobbyView extends StatelessWidget {
+  const _LobbyView({
+    required this.state,
+    required this.myUid,
+    required this.myName,
+    required this.opponentName,
+    required this.busy,
+    required this.onChooseClass,
+    required this.onReadyChanged,
+  });
+
+  final DuelState state;
+  final String myUid;
+  final String myName;
+  final String opponentName;
+  final bool busy;
+  final ValueChanged<String> onChooseClass;
+  final ValueChanged<bool> onReadyChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final me = state.player(myUid);
+    final opponent = state.player(state.otherUid(myUid));
+    if (me == null || opponent == null) {
+      return const Center(child: Text('Duel unavailable.'));
+    }
+
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text(
+            'Duel lobby',
+            style: Theme.of(context).textTheme.headlineSmall
+                ?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Choose your class, then ready up. The duel starts when both players are ready.',
+            style: TextStyle(color: scheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 16),
+          _LobbyPlayerCard(name: myName, player: me, isMe: true),
+          const SizedBox(height: 8),
+          _LobbyPlayerCard(name: opponentName, player: opponent, isMe: false),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Choose your class',
+                  style: Theme.of(context).textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
+              if (me.ready)
+                Text(
+                  'Cancel ready to change',
+                  style: Theme.of(context).textTheme.labelSmall
+                      ?.copyWith(color: scheme.onSurfaceVariant),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          for (final duelClass in duelClasses.values)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _LobbyClassTile(
+                duelClass: duelClass,
+                selected: me.classId == duelClass.id,
+                enabled: !busy && !me.ready,
+                onTap: () => onChooseClass(duelClass.id),
+              ),
+            ),
+          const SizedBox(height: 8),
+          if (me.ready)
+            OutlinedButton.icon(
+              onPressed: busy ? null : () => onReadyChanged(false),
+              icon: const Icon(Icons.close),
+              label: const Text('Cancel ready'),
+            )
+          else
+            FilledButton.icon(
+              onPressed: busy ? null : () => onReadyChanged(true),
+              icon: const Icon(Icons.check),
+              label: const Text('Ready'),
+            ),
+          const SizedBox(height: 8),
+          Text(
+            me.ready
+                ? (opponent.ready
+                      ? 'Both ready. Starting...'
+                      : 'Waiting for $opponentName...')
+                : (opponent.ready
+                      ? '$opponentName is ready.'
+                      : 'You are not ready yet.'),
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: me.ready ? scheme.primary : scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${state.turn == myUid ? 'You start' : '$opponentName starts'} when the duel begins.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.labelSmall
+                ?.copyWith(color: scheme.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LobbyPlayerCard extends StatelessWidget {
+  const _LobbyPlayerCard({
+    required this.name,
+    required this.player,
+    required this.isMe,
+  });
+
+  final String name;
+  final DuelPlayer player;
+  final bool isMe;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final duelClass =
+        duelClasses[player.classId] ?? duelClasses[defaultDuelClassId]!;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isMe
+            ? scheme.primaryContainer.withValues(alpha: 0.45)
+            : scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: player.ready ? scheme.primary : scheme.outlineVariant,
+        ),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            backgroundColor: scheme.surface,
+            child: Icon(_classIcon(player.classId), color: scheme.primary),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isMe ? '$name (you)' : name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${duelClass.name} · ${duelClass.maxHp} HP',
+                  style: Theme.of(context).textTheme.labelMedium
+                      ?.copyWith(color: scheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: player.ready ? scheme.primary : scheme.surface,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              player.ready ? 'Ready' : 'Choosing',
+              style: TextStyle(
+                color: player.ready
+                    ? scheme.onPrimary
+                    : scheme.onSurfaceVariant,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LobbyClassTile extends StatelessWidget {
+  const _LobbyClassTile({
+    required this.duelClass,
+    required this.selected,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final DuelClass duelClass;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final background = selected
+        ? scheme.primaryContainer
+        : scheme.surfaceContainerHighest;
+    final foreground = selected ? scheme.onPrimaryContainer : scheme.onSurface;
+
+    return Opacity(
+      opacity: enabled ? 1 : 0.7,
+      child: Material(
+        color: background,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: enabled ? onTap : null,
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: selected ? scheme.primary : scheme.outlineVariant,
+                width: selected ? 1.5 : 1,
+              ),
+            ),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: scheme.surface,
+                  child: Icon(_classIcon(duelClass.id), color: scheme.primary),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              duelClass.name,
+                              style: TextStyle(
+                                color: foreground,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            '${duelClass.maxHp} HP',
+                            style: TextStyle(
+                              color: foreground.withValues(alpha: 0.8),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        duelClass.description,
+                        style: TextStyle(
+                          color: foreground.withValues(alpha: 0.8),
+                          fontSize: 12,
+                          height: 1.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (selected) ...[
+                  const SizedBox(width: 8),
+                  Icon(Icons.check_circle, color: scheme.primary),
+                ],
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

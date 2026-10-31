@@ -30,6 +30,7 @@ class DuelEngine {
     String opponentClass = defaultDuelClassId,
     String? firstTurnUid,
     int? seed,
+    bool lobby = false,
   }) {
     if (createdBy == opponentUid) {
       throw const DuelException('Pick another player.');
@@ -47,6 +48,26 @@ class DuelEngine {
       createdBy: _freshPlayer(createdBy, creatorClass, rng),
       opponentUid: _freshPlayer(opponentUid, rivalClass, rng),
     };
+
+    if (lobby) {
+      return DuelState(
+        gameId: gameId,
+        participants: [createdBy, opponentUid],
+        createdBy: createdBy,
+        status: 'lobby',
+        winner: '',
+        turn: first,
+        turnCount: 1,
+        shuffleSeed: shuffleSeed + 1,
+        players: players,
+        log: [
+          const DuelLogEntry(
+            uid: '',
+            text: 'Duel lobby opened. Choose your class and ready up.',
+          ),
+        ],
+      );
+    }
 
     var state = DuelState(
       gameId: gameId,
@@ -70,6 +91,59 @@ class DuelEngine {
     return state;
   }
 
+  DuelState chooseClass(
+    DuelState state, {
+    required String uid,
+    required String classId,
+  }) {
+    if (!state.isLobby) {
+      throw const DuelException('This duel has already started.');
+    }
+    if (!state.participants.contains(uid)) {
+      throw const DuelException('Player not found.');
+    }
+    final duelClass = duelClasses[classId];
+    if (duelClass == null) throw const DuelException('Unknown class.');
+
+    final player = state.players[uid];
+    if (player == null) throw const DuelException('Player not found.');
+    final players = Map<String, DuelPlayer>.of(state.players);
+    players[uid] = player.copyWith(classId: duelClass.id, ready: false);
+
+    return state.copyWith(
+      players: players,
+      log: _appendLog(
+        state.log,
+        DuelLogEntry(uid: uid, text: 'chose ${duelClass.name}.'),
+      ),
+    );
+  }
+
+  DuelState setReady(
+    DuelState state, {
+    required String uid,
+    required bool ready,
+  }) {
+    if (!state.isLobby) return state;
+    final player = state.players[uid];
+    if (player == null) throw const DuelException('Player not found.');
+
+    final players = Map<String, DuelPlayer>.of(state.players);
+    players[uid] = player.copyWith(ready: ready);
+    var next = state.copyWith(
+      players: players,
+      log: _appendLog(
+        state.log,
+        DuelLogEntry(uid: uid, text: ready ? 'is ready.' : 'is not ready.'),
+      ),
+    );
+
+    if (players.values.every((participant) => participant.ready)) {
+      next = _startFromLobby(next);
+    }
+    return next;
+  }
+
   DuelState restart(DuelState state, {required String uid, int? seed}) {
     if (!state.participants.contains(uid)) {
       throw const DuelException('Player not found.');
@@ -88,6 +162,7 @@ class DuelEngine {
       opponentClass: state.players[other]?.classId ?? defaultDuelClassId,
       firstTurnUid: uid,
       seed: seed,
+      lobby: true,
     );
   }
 
@@ -235,6 +310,49 @@ class DuelEngine {
     return next;
   }
 
+  DuelState _startFromLobby(DuelState state) {
+    if (!state.isLobby) return state;
+    if (!state.players.values.every((player) => player.ready)) return state;
+
+    final first = state.turn;
+    final rng = Random(state.shuffleSeed);
+    final players = <String, DuelPlayer>{
+      for (final uid in state.participants)
+        uid: _freshPlayer(
+          uid,
+          _classFor(state.players[uid]?.classId ?? defaultDuelClassId),
+          rng,
+        ),
+    };
+    final creatorClass = _classFor(
+      players[state.createdBy]?.classId ?? defaultDuelClassId,
+    );
+    final rivalClass = _classFor(
+      players[state.otherUid(state.createdBy)]?.classId ?? defaultDuelClassId,
+    );
+
+    var next = DuelState(
+      gameId: state.gameId,
+      participants: state.participants,
+      createdBy: state.createdBy,
+      status: 'active',
+      winner: '',
+      turn: first,
+      turnCount: 1,
+      shuffleSeed: state.shuffleSeed + 1,
+      players: players,
+      log: [
+        DuelLogEntry(
+          uid: '',
+          text: 'Duel started: ${creatorClass.name} vs ${rivalClass.name}.',
+        ),
+      ],
+    );
+
+    next = _startTurn(next, first);
+    return next;
+  }
+
   DuelPlayer _freshPlayer(String uid, DuelClass duelClass, Random rng) {
     final deck = List<String>.of(duelStarterDeck(classId: duelClass.id))
       ..shuffle(rng);
@@ -352,7 +470,7 @@ class DuelEngine {
 
   void _requireActive(DuelState state) {
     if (!state.isActive) {
-      throw const DuelException('This duel has already finished.');
+      throw const DuelException('This duel is not active.');
     }
   }
 }

@@ -54,6 +54,10 @@ class _DuelCardBubbleState extends State<DuelCardBubble> {
         final available = state != null;
         final status = state == null
             ? 'Duel unavailable.'
+            : state.isLobby
+            ? (state.player(widget.myUid)?.ready ?? false
+                  ? 'Waiting for ${widget.opponentName}'
+                  : 'Choose your class')
             : state.isFinished
             ? (state.winner == widget.myUid
                   ? 'You won the duel'
@@ -101,7 +105,11 @@ class _DuelCardBubbleState extends State<DuelCardBubble> {
                       ),
                       const Spacer(),
                       Text(
-                        state == null ? '' : 'Round ${state.round}',
+                        state == null
+                            ? ''
+                            : state.isLobby
+                            ? 'Lobby'
+                            : 'Round ${state.round}',
                         style: Theme.of(context).textTheme.labelSmall,
                       ),
                     ],
@@ -133,7 +141,9 @@ class _DuelCardBubbleState extends State<DuelCardBubble> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Tap to open the board',
+                      state.isLobby
+                          ? 'Tap to choose your class'
+                          : 'Tap to open the board',
                       style: Theme.of(context).textTheme.labelSmall,
                     ),
                   ],

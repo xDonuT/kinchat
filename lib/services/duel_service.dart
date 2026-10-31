@@ -57,6 +57,7 @@ class DuelService {
       opponentClass: opponentClass,
       firstTurnUid: uid,
       seed: seed,
+      lobby: true,
     );
 
     await _db.runTransaction((txn) async {
@@ -74,6 +75,32 @@ class DuelService {
     });
 
     return gameRef.id;
+  }
+
+  Future<void> chooseClass({
+    required ChatRoom room,
+    required String gameId,
+    required String uid,
+    required String classId,
+  }) {
+    return _mutate(
+      room,
+      gameId,
+      (state) => _engine.chooseClass(state, uid: uid, classId: classId),
+    );
+  }
+
+  Future<void> setReady({
+    required ChatRoom room,
+    required String gameId,
+    required String uid,
+    required bool ready,
+  }) {
+    return _mutate(
+      room,
+      gameId,
+      (state) => _engine.setReady(state, uid: uid, ready: ready),
+    );
   }
 
   Future<void> playCard({

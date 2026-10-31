@@ -181,7 +181,7 @@ void main() {
     );
   });
 
-  test('restart keeps the pair and lets the requester start', () {
+  test('restart returns to a lobby and lets the requester start', () {
     final base = engine.create(
       gameId: 'g',
       createdBy: 'a',
@@ -195,7 +195,74 @@ void main() {
     expect(next.participants, ['a', 'b']);
     expect(next.createdBy, 'a');
     expect(next.turn, 'b');
-    expect(next.isActive, isTrue);
+    expect(next.isLobby, isTrue);
+    expect(next.player('a')!.ready, isFalse);
+    expect(next.player('b')!.ready, isFalse);
+
+    var started = engine.setReady(next, uid: 'a', ready: true);
+    expect(started.isLobby, isTrue);
+    started = engine.setReady(started, uid: 'b', ready: true);
+    expect(started.isActive, isTrue);
+    expect(started.turn, 'b');
+    expect(started.player('b')!.hand.length, 5);
+    expect(started.player('a')!.hand, isEmpty);
+  });
+
+  test('lobby waits for both players and uses each chosen class', () {
+    var state = engine.create(
+      gameId: 'g',
+      createdBy: 'a',
+      opponentUid: 'b',
+      seed: 18,
+      lobby: true,
+    );
+
+    expect(state.isLobby, isTrue);
+    expect(state.player('a')!.hand, isEmpty);
+    expect(state.player('a')!.ready, isFalse);
+
+    state = engine.chooseClass(state, uid: 'a', classId: 'ninja');
+    state = engine.chooseClass(state, uid: 'b', classId: 'wizard');
+    expect(state.player('a')!.classId, 'ninja');
+    expect(state.player('b')!.classId, 'wizard');
+
+    state = engine.setReady(state, uid: 'a', ready: true);
+    expect(state.isLobby, isTrue);
+    state = engine.setReady(state, uid: 'b', ready: true);
+
+    expect(state.isActive, isTrue);
+    expect(state.turn, 'a');
+    expect(state.player('a')!.maxHp, 42);
+    expect(state.player('b')!.maxHp, 44);
+    expect(state.player('a')!.hand.length, 5);
+  });
+
+  test('changing class clears ready and active duels reject lobby actions', () {
+    var state = engine.create(
+      gameId: 'g',
+      createdBy: 'a',
+      opponentUid: 'b',
+      seed: 19,
+      lobby: true,
+    );
+
+    state = engine.setReady(state, uid: 'a', ready: true);
+    expect(state.player('a')!.ready, isTrue);
+    state = engine.chooseClass(state, uid: 'a', classId: 'wizard');
+    expect(state.player('a')!.ready, isFalse);
+    expect(state.player('a')!.classId, 'wizard');
+
+    final active = engine.create(
+      gameId: 'g',
+      createdBy: 'a',
+      opponentUid: 'b',
+      seed: 20,
+    );
+    expect(
+      () => engine.chooseClass(active, uid: 'a', classId: 'ninja'),
+      throwsA(isA<DuelException>()),
+    );
+    expect(engine.setReady(active, uid: 'a', ready: true).status, 'active');
   });
 
   test('defaults both players to Knight and the Knight deck', () {
@@ -340,5 +407,6 @@ void main() {
     expect(player.classId, 'knight');
     expect(player.poison, 0);
     expect(player.focus, 0);
+    expect(player.ready, isFalse);
   });
 }
