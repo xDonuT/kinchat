@@ -66,6 +66,8 @@ class DuelEngine {
             text: 'Duel lobby opened. Choose your class and ready up.',
           ),
         ],
+        draftRound: 0,
+        draftPicks: const <String,String>{},
       );
     }
 
@@ -81,10 +83,12 @@ class DuelEngine {
       players: players,
       log: [
         DuelLogEntry(
-          uid: '',
-          text: 'Duel started: ${creatorClass.name} vs ${rivalClass.name}.',
+          uid: first,
+          text: 'Duel started. $createdBy vs $opponentUid.',
         ),
       ],
+      draftRound: 0,
+      draftPicks: const <String,String>{},
     );
 
     state = _startTurn(state, first);
@@ -248,6 +252,20 @@ class DuelEngine {
       details.add('${card.focus} focus');
     }
 
+    if (card.cleanse > 0) {
+      updatedPlayer = updatedPlayer.copyWith(poison: 0, vulnerable: 0);
+      players[uid] = updatedPlayer;
+      details.add('cleansed');
+    }
+
+    if (card.heal > 0) {
+      updatedPlayer = updatedPlayer.copyWith(
+        hp: min(updatedPlayer.maxHp, updatedPlayer.hp + card.heal),
+      );
+      players[uid] = updatedPlayer;
+      details.add('healed ${card.heal}');
+    }
+
     final suffix = details.isEmpty ? '' : ' (${details.join(', ')})';
     var next = state.copyWith(
       players: players,
@@ -272,6 +290,53 @@ class DuelEngine {
       next = _drawCards(next, uid, card.draw);
     }
 
+    return next;
+  }
+
+  DuelState takeRewardDraft(
+    DuelState state, {
+    required String uid,
+    required String cardId,
+  }) {
+    _requireActive(state);
+    final round = state.round;
+    if (round % 3 != 0) {
+      throw const DuelException('Reward draft only starts on round 3, 6, 9...');
+    }
+    if (round <= state.draftRound) {
+      throw const DuelException('Reward draft already taken this round.');
+    }
+    if (state.draftPicks.containsKey(uid)) {
+      throw const DuelException('You already picked a reward this round.');
+    }
+    final card = duelCards[cardId];
+    if (card == null) throw const DuelException('Unknown card.');
+    final player = state.players[uid];
+    if (player == null) throw const DuelException('Player not found.');
+    final options = rewardDraftOptions(classId: player.classId);
+    if (!options.contains(cardId)) {
+      throw const DuelException('Not a valid reward choice.');
+    }
+
+    final drawPile = List<String>.of(player.drawPile)..add(cardId);
+    final updatedPlayer = player.copyWith(drawPile: drawPile);
+    final players = Map<String, DuelPlayer>.of(state.players);
+    players[uid] = updatedPlayer;
+
+    final picks = Map<String, String>.of(state.draftPicks)..[uid] = cardId;
+    var next = state.copyWith(
+      players: players,
+      draftPicks: picks,
+      log: _appendLog(
+        state.log,
+        DuelLogEntry(uid: uid, text: 'chooses ${card.name} as a reward.'),
+      ),
+    );
+
+    final participants = state.participants;
+    if (participants.every((p) => picks.containsKey(p))) {
+      next = next.copyWith(draftRound: round, draftPicks: {});
+    }
     return next;
   }
 
@@ -347,6 +412,8 @@ class DuelEngine {
           text: 'Duel started: ${creatorClass.name} vs ${rivalClass.name}.',
         ),
       ],
+      draftRound: 0,
+      draftPicks: const <String, String>{},
     );
 
     next = _startTurn(next, first);

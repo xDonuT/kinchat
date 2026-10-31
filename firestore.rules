@@ -175,12 +175,12 @@ service cloud.firestore {
            'winner',
            'turn',
            'turnCount',
-           'shuffleSeed',
-           'players',
-           'log',
-           'createdAt',
-           'updatedAt'
-         ])
+         'shuffleSeed',
+         'players',
+         'log',
+         'draftRound',
+         'draftPicks'
+       ])
         && d.participants is list
         && d.participants.size() == 2
         && request.auth.uid in d.participants
@@ -199,7 +199,12 @@ service cloud.firestore {
         && d.players is map
         && d.players.keys().hasOnly(d.participants)
         && d.log is list
-        && d.log.size() <= 50;
+        && d.log.size() <= 50
+        && d.draftRound is int
+        && d.draftRound >= 0
+        && d.draftPicks is map
+        && d.draftPicks.keys().hasOnly(d.participants)
+        && d.draftPicks.values().every((v) => v is string);
     }
 
     // ------------------------------------------------------------------

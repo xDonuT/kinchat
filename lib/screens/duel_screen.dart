@@ -4,6 +4,7 @@ import '../models/duel.dart';
 import '../services/chat_service.dart';
 import '../services/duel_service.dart';
 import '../services/duel_sfx.dart';
+import '../widgets/duel_info_sheet.dart';
 import 'duel_cards_screen.dart';
 
 class DuelScreen extends StatefulWidget {
@@ -88,6 +89,24 @@ class _DuelScreenState extends State<DuelScreen> {
         room: widget.room,
         gameId: widget.gameId,
         uid: widget.myUid,
+      );
+    } catch (error) {
+      _showError(error);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _onRewardDraft(String cardId) async {
+    if (_busy) return;
+    DuelSfx.instance.play('card');
+    setState(() => _busy = true);
+    try {
+      await _service.takeRewardDraft(
+        room: widget.room,
+        gameId: widget.gameId,
+        uid: widget.myUid,
+        cardId: cardId,
       );
     } catch (error) {
       _showError(error);
@@ -271,6 +290,7 @@ class _DuelScreenState extends State<DuelScreen> {
                   onPlay: _playCard,
                   onEndTurn: _endTurn,
                   onRestart: _restart,
+                  onRewardDraft: _onRewardDraft,
                 ),
               ],
             ),
@@ -662,33 +682,101 @@ class _PlayerPanel extends StatelessWidget {
               _StatChip(
                 icon: _classIcon(player.classId),
                 label: duelClass.name,
+                onTap: () => showDuelInfoSheet(
+                  context,
+                  title: duelClass.name,
+                  icon: _classIcon(player.classId),
+                  body:
+                      '${duelClass.description}\n\n'
+                      'HP: ${duelClass.maxHp}\n'
+                      'Energy: ${duelClass.maxEnergy}\n'
+                      'Starting deck: 10 cards',
+                ),
               ),
               _StatChip(
                 icon: Icons.shield_outlined,
                 label: 'Block ${player.block}',
+                onTap: () => showDuelInfoSheet(
+                  context,
+                  title: 'Block ${player.block}',
+                  icon: Icons.shield_outlined,
+                  body:
+                      'Block absorbs attack damage before HP.\n\n'
+                      'It protects through the opponent\'s turn, then clears '
+                      'at the start of $name\'s next turn.\n\n'
+                      'Current: ${player.block} block.',
+                ),
               ),
               _StatChip(
                 icon: Icons.bolt,
                 label: 'Energy ${player.energy}/${player.maxEnergy}',
+                onTap: () => showDuelInfoSheet(
+                  context,
+                  title: 'Energy ${player.energy}/${player.maxEnergy}',
+                  icon: Icons.bolt,
+                  body:
+                      'Energy is spent to play cards. It refills to '
+                      '${player.maxEnergy} at the start of $name\'s turn.\n\n'
+                      'Unspent energy is lost when the turn ends.\n\n'
+                      'Current: ${player.energy}/${player.maxEnergy}.',
+                ),
               ),
               if (player.vulnerable > 0)
                 _StatChip(
                   icon: Icons.warning_amber_rounded,
                   label: 'Vulnerable ${player.vulnerable}',
+                  onTap: () => showDuelInfoSheet(
+                    context,
+                    title: 'Vulnerable ${player.vulnerable}',
+                    icon: Icons.warning_amber_rounded,
+                    body:
+                        'Attacks against $name deal 50% more damage, rounded '
+                        'down.\n\n'
+                        'Each point drops by 1 at the end of $name\'s turn. '
+                        'It stacks.\n\n'
+                        'Current: ${player.vulnerable} Vulnerable.',
+                  ),
                 ),
               if (player.poison > 0)
                 _StatChip(
                   icon: Icons.science_outlined,
                   label: 'Poison ${player.poison}',
+                  onTap: () => showDuelInfoSheet(
+                    context,
+                    title: 'Poison ${player.poison}',
+                    icon: Icons.science_outlined,
+                    body: _poisonBody(name, player.poison),
+                  ),
                 ),
               if (player.focus > 0)
                 _StatChip(
                   icon: Icons.auto_awesome,
                   label: 'Focus ${player.focus}',
+                  onTap: () => showDuelInfoSheet(
+                    context,
+                    title: 'Focus ${player.focus}',
+                    icon: Icons.auto_awesome,
+                    body:
+                        'Focus is permanent and does not expire at the end of '
+                        'the turn.\n\n'
+                        'Cards that say "per Focus" gain that much extra '
+                        'damage for each Focus.\n\n'
+                        'Current: ${player.focus} Focus.',
+                  ),
                 ),
               _StatChip(
                 icon: Icons.style_outlined,
                 label: 'Hand ${player.handCount}',
+                onTap: () => showDuelInfoSheet(
+                  context,
+                  title: 'Hand ${player.handCount}',
+                  icon: Icons.style_outlined,
+                  body:
+                      'Cards currently in $name\'s hand.\n\n'
+                      'Draw 5 at the start of your turn, up to 10. Remaining '
+                      'cards are discarded at the end of the turn.\n\n'
+                      'Current: ${player.handCount} cards.',
+                ),
               ),
             ],
           ),
@@ -710,21 +798,32 @@ IconData _classIcon(String classId) {
   }
 }
 
+String _poisonBody(String name, int poison) {
+  final ticks = List.generate(
+    poison,
+    (index) => '${poison - index}',
+  ).join(' → ');
+  final total = poison * (poison + 1) ~/ 2;
+  return 'At the start of $name\'s turn, they take damage equal to Poison, '
+      'ignoring block. Then Poison drops by 1.\n\n'
+      'Next ticks: $ticks damage.\n'
+      'If it runs its course: $total total damage.\n\n'
+      'Current: $poison Poison.';
+}
+
 class _StatChip extends StatelessWidget {
-  const _StatChip({required this.icon, required this.label});
+  const _StatChip({required this.icon, required this.label, this.onTap});
 
   final IconData icon;
   final String label;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Container(
+    const radius = BorderRadius.all(Radius.circular(999));
+    final content = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(999),
-      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -737,8 +836,25 @@ class _StatChip extends StatelessWidget {
               fontWeight: FontWeight.w600,
             ),
           ),
+          if (onTap != null) ...[
+            const SizedBox(width: 3),
+            Icon(Icons.info_outline, size: 12, color: scheme.onSurfaceVariant),
+          ],
         ],
       ),
+    );
+
+    if (onTap == null) {
+      return Container(
+        decoration: BoxDecoration(color: scheme.surface, borderRadius: radius),
+        child: content,
+      );
+    }
+
+    return Material(
+      color: scheme.surface,
+      borderRadius: radius,
+      child: InkWell(onTap: onTap, borderRadius: radius, child: content),
     );
   }
 }
@@ -874,6 +990,7 @@ class _HandPanel extends StatelessWidget {
     required this.onPlay,
     required this.onEndTurn,
     required this.onRestart,
+    required this.onRewardDraft,
   });
 
   final DuelState state;
@@ -884,6 +1001,7 @@ class _HandPanel extends StatelessWidget {
   final void Function(int index, DuelCard card) onPlay;
   final VoidCallback onEndTurn;
   final VoidCallback onRestart;
+  final void Function(String cardId) onRewardDraft;
 
   @override
   Widget build(BuildContext context) {
@@ -909,6 +1027,12 @@ class _HandPanel extends StatelessWidget {
       );
     }
 
+    final myUid = player.uid;
+    final canDraft = state.isActive &&
+        state.round % 3 == 0 &&
+        state.round > state.draftRound &&
+        !state.draftPicks.containsKey(myUid);
+
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
       decoration: BoxDecoration(
@@ -918,6 +1042,20 @@ class _HandPanel extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (canDraft) ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton.tonalIcon(
+                  onPressed: busy ? null : () => _showDraftPicker(context),
+                  icon: const Icon(Icons.card_giftcard),
+                  label:
+                      Text('Claim Round ${state.round} Upgrade (Pick 1 of 3)'),
+                ),
+              ),
+            ),
+          ],
           SizedBox(
             height: 138,
             child: player.hand.isEmpty
@@ -938,6 +1076,7 @@ class _HandPanel extends StatelessWidget {
                         card: card,
                         enabled: myTurn && !busy,
                         onTap: () => onPlay(index, card),
+                        onLongPress: () => showCardInfo(context, card: card),
                       );
                     },
                   ),
@@ -965,6 +1104,90 @@ class _HandPanel extends StatelessWidget {
       ),
     );
   }
+
+  void _showDraftPicker(BuildContext context) {
+    final options = rewardDraftOptions(classId: player.classId);
+    final scheme = Theme.of(context).colorScheme;
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (bottomSheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.card_giftcard, color: scheme.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Round ${state.round} Upgrade',
+                        style: Theme.of(bottomSheetContext)
+                            .textTheme
+                            .titleLarge
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Choose 1 card to add to your deck. Long-press any card for full details.',
+                  style: TextStyle(color: scheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: 16),
+                for (final cardId in options) ...[
+                  Builder(
+                    builder: (tileContext) {
+                      final card = duelCards[cardId];
+                      if (card == null) return const SizedBox.shrink();
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: ListTile(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(color: scheme.outlineVariant),
+                          ),
+                          leading: CircleAvatar(
+                            radius: 14,
+                            backgroundColor: scheme.primaryContainer,
+                            child: Text(
+                              '${card.cost}',
+                              style: TextStyle(
+                                color: scheme.onPrimaryContainer,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          title: Text(
+                            card.name,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: Text(card.description),
+                          trailing: const Icon(Icons.add_circle_outline),
+                          onTap: () {
+                            Navigator.of(bottomSheetContext).pop();
+                            onRewardDraft(card.id);
+                          },
+                          onLongPress: () =>
+                              showCardInfo(tileContext, card: card),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _DuelCardTile extends StatelessWidget {
@@ -972,11 +1195,13 @@ class _DuelCardTile extends StatelessWidget {
     required this.card,
     required this.enabled,
     required this.onTap,
+    this.onLongPress,
   });
 
   final DuelCard card;
   final bool enabled;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
