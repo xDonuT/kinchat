@@ -1156,6 +1156,7 @@ class _Composer extends StatelessWidget {
                   maxLines: 5,
                   textCapitalization: TextCapitalization.sentences,
                   textInputAction: TextInputAction.newline,
+                  cursorColor: const Color(0xFFFF0000),
                   decoration: InputDecoration(
                     hintText: 'Message',
                     filled: true,
