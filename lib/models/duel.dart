@@ -14,6 +14,9 @@ class DuelCard {
     required this.draw,
     required this.vulnerable,
     required this.kind,
+    this.poison = 0,
+    this.focus = 0,
+    this.focusMultiplier = 0,
   });
 
   final String id;
@@ -24,6 +27,9 @@ class DuelCard {
   final int block;
   final int draw;
   final int vulnerable;
+  final int poison;
+  final int focus;
+  final int focusMultiplier;
 
   /// 'attack' or 'skill'; used only for colouring the card.
   final String kind;
@@ -118,21 +124,166 @@ const Map<String, DuelCard> duelCards = {
     vulnerable: 0,
     kind: 'attack',
   ),
+  'poison_stab': DuelCard(
+    id: 'poison_stab',
+    name: 'Poison Stab',
+    cost: 1,
+    description: 'Deal 3 damage. Apply 3 Poison.',
+    damage: 3,
+    block: 0,
+    draw: 0,
+    vulnerable: 0,
+    poison: 3,
+    kind: 'attack',
+  ),
+  'deadly_poison': DuelCard(
+    id: 'deadly_poison',
+    name: 'Deadly Poison',
+    cost: 1,
+    description: 'Apply 4 Poison. Poison ignores block.',
+    damage: 0,
+    block: 0,
+    draw: 0,
+    vulnerable: 0,
+    poison: 4,
+    kind: 'skill',
+  ),
+  'zap': DuelCard(
+    id: 'zap',
+    name: 'Zap',
+    cost: 0,
+    description: 'Gain 1 Focus.',
+    damage: 0,
+    block: 0,
+    draw: 0,
+    vulnerable: 0,
+    focus: 1,
+    kind: 'skill',
+  ),
+  'arcane_bolt': DuelCard(
+    id: 'arcane_bolt',
+    name: 'Arcane Bolt',
+    cost: 1,
+    description: 'Deal 4 damage, plus 2 per Focus.',
+    damage: 4,
+    block: 0,
+    draw: 0,
+    vulnerable: 0,
+    focusMultiplier: 2,
+    kind: 'attack',
+  ),
+  'mana_shield': DuelCard(
+    id: 'mana_shield',
+    name: 'Mana Shield',
+    cost: 1,
+    description: 'Gain 5 block and 1 Focus.',
+    damage: 0,
+    block: 5,
+    draw: 0,
+    vulnerable: 0,
+    focus: 1,
+    kind: 'skill',
+  ),
+  'fireball': DuelCard(
+    id: 'fireball',
+    name: 'Fireball',
+    cost: 2,
+    description: 'Deal 6 damage, plus 2 per Focus.',
+    damage: 6,
+    block: 0,
+    draw: 0,
+    vulnerable: 0,
+    focusMultiplier: 2,
+    kind: 'attack',
+  ),
 };
 
-/// Five Strikes, four Defends, and one Bash.
-List<String> duelStarterDeck() => <String>[
-  'strike',
-  'strike',
-  'strike',
-  'strike',
-  'strike',
-  'defend',
-  'defend',
-  'defend',
-  'defend',
-  'bash',
-];
+const String defaultDuelClassId = 'knight';
+
+class DuelClass {
+  const DuelClass({
+    required this.id,
+    required this.name,
+    required this.maxHp,
+    required this.maxEnergy,
+    required this.description,
+  });
+
+  final String id;
+  final String name;
+  final int maxHp;
+  final int maxEnergy;
+  final String description;
+}
+
+const Map<String, DuelClass> duelClasses = {
+  'knight': DuelClass(
+    id: 'knight',
+    name: 'Knight',
+    maxHp: 50,
+    maxEnergy: 3,
+    description: 'High HP. Block and Vulnerable.',
+  ),
+  'ninja': DuelClass(
+    id: 'ninja',
+    name: 'Ninja',
+    maxHp: 42,
+    maxEnergy: 3,
+    description: 'Apply Poison and chip away. Poison ignores block.',
+  ),
+  'wizard': DuelClass(
+    id: 'wizard',
+    name: 'Wizard',
+    maxHp: 44,
+    maxEnergy: 3,
+    description: 'Gain Focus, then empower Arcane Bolt and Fireball.',
+  ),
+};
+
+List<String> duelStarterDeck({String classId = defaultDuelClassId}) {
+  switch (classId) {
+    case 'ninja':
+      return const <String>[
+        'strike',
+        'strike',
+        'strike',
+        'strike',
+        'defend',
+        'defend',
+        'quick_jab',
+        'pommel_strike',
+        'poison_stab',
+        'deadly_poison',
+      ];
+    case 'wizard':
+      return const <String>[
+        'strike',
+        'strike',
+        'strike',
+        'strike',
+        'defend',
+        'defend',
+        'zap',
+        'arcane_bolt',
+        'mana_shield',
+        'fireball',
+      ];
+    case 'knight':
+    default:
+      return const <String>[
+        'strike',
+        'strike',
+        'strike',
+        'strike',
+        'defend',
+        'defend',
+        'bash',
+        'iron_wave',
+        'heavy_blow',
+        'shrug_it_off',
+      ];
+  }
+}
 
 class DuelLogEntry {
   const DuelLogEntry({required this.uid, required this.text});
@@ -152,24 +303,30 @@ class DuelLogEntry {
 class DuelPlayer {
   const DuelPlayer({
     required this.uid,
+    this.classId = defaultDuelClassId,
     required this.hp,
     required this.maxHp,
     required this.block,
     required this.energy,
     required this.maxEnergy,
     required this.vulnerable,
+    this.poison = 0,
+    this.focus = 0,
     required this.hand,
     required this.drawPile,
     required this.discardPile,
   });
 
   final String uid;
+  final String classId;
   final int hp;
   final int maxHp;
   final int block;
   final int energy;
   final int maxEnergy;
   final int vulnerable;
+  final int poison;
+  final int focus;
   final List<String> hand;
   final List<String> drawPile;
   final List<String> discardPile;
@@ -178,35 +335,44 @@ class DuelPlayer {
   int get handCount => hand.length;
 
   DuelPlayer copyWith({
+    String? classId,
     int? hp,
     int? maxHp,
     int? block,
     int? energy,
     int? maxEnergy,
     int? vulnerable,
+    int? poison,
+    int? focus,
     List<String>? hand,
     List<String>? drawPile,
     List<String>? discardPile,
   }) => DuelPlayer(
     uid: uid,
+    classId: classId ?? this.classId,
     hp: hp ?? this.hp,
     maxHp: maxHp ?? this.maxHp,
     block: block ?? this.block,
     energy: energy ?? this.energy,
     maxEnergy: maxEnergy ?? this.maxEnergy,
     vulnerable: vulnerable ?? this.vulnerable,
+    poison: poison ?? this.poison,
+    focus: focus ?? this.focus,
     hand: hand ?? this.hand,
     drawPile: drawPile ?? this.drawPile,
     discardPile: discardPile ?? this.discardPile,
   );
 
   Map<String, dynamic> toMap() => {
+    'classId': classId,
     'hp': hp,
     'maxHp': maxHp,
     'block': block,
     'energy': energy,
     'maxEnergy': maxEnergy,
     'vulnerable': vulnerable,
+    'poison': poison,
+    'focus': focus,
     'hand': hand,
     'drawPile': drawPile,
     'discardPile': discardPile,
@@ -215,12 +381,15 @@ class DuelPlayer {
   factory DuelPlayer.fromMap(String uid, Map<String, dynamic> map) =>
       DuelPlayer(
         uid: uid,
+        classId: map['classId'] as String? ?? defaultDuelClassId,
         hp: (map['hp'] as num?)?.toInt() ?? 0,
         maxHp: (map['maxHp'] as num?)?.toInt() ?? 50,
         block: (map['block'] as num?)?.toInt() ?? 0,
         energy: (map['energy'] as num?)?.toInt() ?? 0,
         maxEnergy: (map['maxEnergy'] as num?)?.toInt() ?? 3,
         vulnerable: (map['vulnerable'] as num?)?.toInt() ?? 0,
+        poison: (map['poison'] as num?)?.toInt() ?? 0,
+        focus: (map['focus'] as num?)?.toInt() ?? 0,
         hand: _stringList(map['hand']),
         drawPile: _stringList(map['drawPile']),
         discardPile: _stringList(map['discardPile']),

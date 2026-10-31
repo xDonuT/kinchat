@@ -39,6 +39,8 @@ class DuelService {
     required ChatRoom room,
     required String uid,
     required String opponentUid,
+    String createdByClass = defaultDuelClassId,
+    String opponentClass = defaultDuelClassId,
     int? seed,
   }) async {
     final gameRef = _db
@@ -51,6 +53,8 @@ class DuelService {
       gameId: gameRef.id,
       createdBy: uid,
       opponentUid: opponentUid,
+      createdByClass: createdByClass,
+      opponentClass: opponentClass,
       firstTurnUid: uid,
       seed: seed,
     );

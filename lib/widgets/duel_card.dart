@@ -159,6 +159,8 @@ class _MiniPlayerLine extends StatelessWidget {
     final hp = player?.hp ?? 0;
     final maxHp = player?.maxHp ?? 1;
     final ratio = maxHp <= 0 ? 0.0 : (hp / maxHp).clamp(0.0, 1.0);
+    final className = duelClasses[player?.classId]?.name ?? '';
+    final label = className.isEmpty ? name : '$name · $className';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -167,7 +169,7 @@ class _MiniPlayerLine extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                name,
+                label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.labelMedium

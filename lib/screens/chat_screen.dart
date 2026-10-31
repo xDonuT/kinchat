@@ -19,6 +19,7 @@ import '../services/kuteken_emoji.dart';
 import '../services/notification_service.dart';
 import '../services/wallpaper_service.dart';
 import '../widgets/duel_card.dart';
+import '../widgets/duel_class_picker.dart';
 import 'image_viewer_screen.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -107,11 +108,17 @@ class _ChatScreenState extends State<ChatScreen> {
       );
       return;
     }
+
+    final classes = await showDuelClassPicker(context);
+    if (classes == null || !mounted) return;
+
     try {
       await _duel.createDuel(
         room: widget.room,
         uid: widget.uid,
         opponentUid: opponent,
+        createdByClass: classes.$1,
+        opponentClass: classes.$2,
       );
     } catch (error) {
       if (!mounted) return;

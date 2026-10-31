@@ -185,6 +185,8 @@ class _PlayerPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final duelClass =
+        duelClasses[player.classId] ?? duelClasses[defaultDuelClassId]!;
     final hpRatio = player.maxHp <= 0
         ? 0.0
         : (player.hp / player.maxHp).clamp(0.0, 1.0);
@@ -258,6 +260,10 @@ class _PlayerPanel extends StatelessWidget {
             runSpacing: 6,
             children: [
               _StatChip(
+                icon: _classIcon(player.classId),
+                label: duelClass.name,
+              ),
+              _StatChip(
                 icon: Icons.shield_outlined,
                 label: 'Block ${player.block}',
               ),
@@ -270,6 +276,16 @@ class _PlayerPanel extends StatelessWidget {
                   icon: Icons.warning_amber_rounded,
                   label: 'Vulnerable ${player.vulnerable}',
                 ),
+              if (player.poison > 0)
+                _StatChip(
+                  icon: Icons.science_outlined,
+                  label: 'Poison ${player.poison}',
+                ),
+              if (player.focus > 0)
+                _StatChip(
+                  icon: Icons.auto_awesome,
+                  label: 'Focus ${player.focus}',
+                ),
               _StatChip(
                 icon: Icons.style_outlined,
                 label: 'Hand ${player.handCount}',
@@ -279,6 +295,18 @@ class _PlayerPanel extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+IconData _classIcon(String classId) {
+  switch (classId) {
+    case 'ninja':
+      return Icons.flash_on;
+    case 'wizard':
+      return Icons.auto_awesome;
+    case 'knight':
+    default:
+      return Icons.shield_outlined;
   }
 }
 
@@ -407,7 +435,16 @@ class _LogPanel extends StatelessWidget {
                 entry.uid.isEmpty
                     ? entry.text
                     : '${_nameFor(entry.uid)} ${entry.text}',
-                style: Theme.of(context).textTheme.bodySmall,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: entry.uid.isEmpty
+                      ? Theme.of(context).colorScheme.onSurfaceVariant
+                      : entry.uid == myUid
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.tertiary,
+                  fontWeight: entry.uid.isEmpty
+                      ? FontWeight.normal
+                      : FontWeight.w600,
+                ),
               ),
             ),
       ],
@@ -538,6 +575,13 @@ class _DuelCardTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final attack = card.kind == 'attack';
+    final icon = card.poison > 0
+        ? Icons.science_outlined
+        : card.focus > 0 || card.focusMultiplier > 0
+        ? Icons.auto_awesome
+        : attack
+        ? Icons.gavel
+        : Icons.shield_outlined;
     final background = attack
         ? scheme.errorContainer
         : scheme.secondaryContainer;
@@ -575,11 +619,7 @@ class _DuelCardTile extends StatelessWidget {
                         ),
                       ),
                       const Spacer(),
-                      Icon(
-                        attack ? Icons.gavel : Icons.shield_outlined,
-                        size: 16,
-                        color: foreground,
-                      ),
+                      Icon(icon, size: 16, color: foreground),
                     ],
                   ),
                   const SizedBox(height: 6),

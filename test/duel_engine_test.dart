@@ -197,4 +197,148 @@ void main() {
     expect(next.turn, 'b');
     expect(next.isActive, isTrue);
   });
+
+  test('defaults both players to Knight and the Knight deck', () {
+    final state = engine.create(
+      gameId: 'g',
+      createdBy: 'a',
+      opponentUid: 'b',
+      seed: 11,
+    );
+    final a = state.player('a')!;
+    final b = state.player('b')!;
+
+    expect(a.classId, 'knight');
+    expect(b.classId, 'knight');
+    expect(a.maxHp, 50);
+    expect(b.maxHp, 50);
+    final cards = [...a.hand, ...a.drawPile];
+    expect(
+      cards,
+      containsAll(['bash', 'iron_wave', 'heavy_blow', 'shrug_it_off']),
+    );
+    expect(cards.length, 10);
+  });
+
+  test('Ninja and Wizard use their own HP and starter cards', () {
+    final state = engine.create(
+      gameId: 'g',
+      createdBy: 'a',
+      opponentUid: 'b',
+      createdByClass: 'ninja',
+      opponentClass: 'wizard',
+      seed: 12,
+    );
+    final ninja = state.player('a')!;
+    final wizard = state.player('b')!;
+
+    expect(ninja.classId, 'ninja');
+    expect(ninja.maxHp, 42);
+    expect(wizard.classId, 'wizard');
+    expect(wizard.maxHp, 44);
+
+    final ninjaCards = [...ninja.hand, ...ninja.drawPile];
+    expect(
+      ninjaCards,
+      containsAll([
+        'quick_jab',
+        'pommel_strike',
+        'poison_stab',
+        'deadly_poison',
+      ]),
+    );
+    final wizardCards = [...wizard.hand, ...wizard.drawPile];
+    expect(
+      wizardCards,
+      containsAll(['zap', 'arcane_bolt', 'mana_shield', 'fireball']),
+    );
+  });
+
+  test('Poison ignores block and ticks at the start of the victim turn', () {
+    final base = engine.create(
+      gameId: 'g',
+      createdBy: 'a',
+      opponentUid: 'b',
+      seed: 13,
+    );
+    final players = Map<String, DuelPlayer>.of(base.players);
+    players['b'] = players['b']!.copyWith(hp: 20, block: 10, poison: 3);
+    var state = base.copyWith(players: players);
+
+    state = engine.endTurn(state, uid: 'a');
+    expect(state.player('b')!.hp, 17);
+    expect(state.player('b')!.poison, 2);
+    expect(state.player('b')!.block, 0);
+
+    state = engine.endTurn(state, uid: 'b');
+    state = engine.endTurn(state, uid: 'a');
+    expect(state.player('b')!.hp, 15);
+    expect(state.player('b')!.poison, 1);
+  });
+
+  test('Poison can finish the duel at the start of a turn', () {
+    final base = engine.create(
+      gameId: 'g',
+      createdBy: 'a',
+      opponentUid: 'b',
+      seed: 14,
+    );
+    final players = Map<String, DuelPlayer>.of(base.players);
+    players['b'] = players['b']!.copyWith(hp: 2, poison: 5);
+
+    final state = engine.endTurn(base.copyWith(players: players), uid: 'a');
+
+    expect(state.isFinished, isTrue);
+    expect(state.winner, 'a');
+    expect(state.player('b')!.hp, 0);
+  });
+
+  test('Focus empowers cards that scale with it', () {
+    final base = engine.create(
+      gameId: 'g',
+      createdBy: 'a',
+      opponentUid: 'b',
+      createdByClass: 'wizard',
+      opponentClass: 'knight',
+      seed: 15,
+    );
+    var state = withHand(base, 'a', ['zap', 'zap', 'arcane_bolt']);
+
+    state = engine.playCard(state, uid: 'a', handIndex: 0);
+    expect(state.player('a')!.focus, 1);
+    state = engine.playCard(state, uid: 'a', handIndex: 0);
+    expect(state.player('a')!.focus, 2);
+    state = engine.playCard(state, uid: 'a', handIndex: 0);
+
+    expect(state.player('b')!.hp, 42);
+    expect(state.player('a')!.energy, 2);
+  });
+
+  test('rematch keeps each player class', () {
+    final base = engine.create(
+      gameId: 'g',
+      createdBy: 'a',
+      opponentUid: 'b',
+      createdByClass: 'ninja',
+      opponentClass: 'wizard',
+      seed: 16,
+    );
+    final finished = base.copyWith(status: 'finished', winner: 'a');
+
+    final next = engine.restart(finished, uid: 'b', seed: 17);
+
+    expect(next.player('a')!.classId, 'ninja');
+    expect(next.player('b')!.classId, 'wizard');
+    expect(next.player('a')!.maxHp, 42);
+    expect(next.player('b')!.maxHp, 44);
+    expect(next.turn, 'b');
+  });
+
+  test('old duel players default to Knight and no new statuses', () {
+    final player = DuelPlayer.fromMap('a', {'hp': 50, 'maxHp': 50});
+
+    expect(player.classId, 'knight');
+    expect(player.poison, 0);
+    expect(player.focus, 0);
+  });
 }

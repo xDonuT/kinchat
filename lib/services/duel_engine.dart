@@ -26,6 +26,8 @@ class DuelEngine {
     required String gameId,
     required String createdBy,
     required String opponentUid,
+    String createdByClass = defaultDuelClassId,
+    String opponentClass = defaultDuelClassId,
     String? firstTurnUid,
     int? seed,
   }) {
@@ -37,11 +39,13 @@ class DuelEngine {
       throw const DuelException('Invalid first player.');
     }
 
+    final creatorClass = _classFor(createdByClass);
+    final rivalClass = _classFor(opponentClass);
     final shuffleSeed = seed ?? DateTime.now().microsecondsSinceEpoch;
     final rng = Random(shuffleSeed);
     final players = <String, DuelPlayer>{
-      createdBy: _freshPlayer(createdBy, rng),
-      opponentUid: _freshPlayer(opponentUid, rng),
+      createdBy: _freshPlayer(createdBy, creatorClass, rng),
+      opponentUid: _freshPlayer(opponentUid, rivalClass, rng),
     };
 
     var state = DuelState(
@@ -54,7 +58,12 @@ class DuelEngine {
       turnCount: 1,
       shuffleSeed: shuffleSeed + 1,
       players: players,
-      log: [const DuelLogEntry(uid: '', text: 'Duel started.')],
+      log: [
+        DuelLogEntry(
+          uid: '',
+          text: 'Duel started: ${creatorClass.name} vs ${rivalClass.name}.',
+        ),
+      ],
     );
 
     state = _startTurn(state, first);
@@ -74,6 +83,9 @@ class DuelEngine {
       gameId: state.gameId,
       createdBy: state.createdBy,
       opponentUid: other,
+      createdByClass:
+          state.players[state.createdBy]?.classId ?? defaultDuelClassId,
+      opponentClass: state.players[other]?.classId ?? defaultDuelClassId,
       firstTurnUid: uid,
       seed: seed,
     );
@@ -119,8 +131,10 @@ class DuelEngine {
 
     final details = <String>[];
 
-    if (card.damage > 0) {
-      final damage = _damageAfterVulnerable(card.damage, target.vulnerable);
+    final focusDamage = card.focusMultiplier * updatedPlayer.focus;
+    if (card.damage > 0 || focusDamage > 0) {
+      final rawDamage = card.damage + focusDamage;
+      final damage = _damageAfterVulnerable(rawDamage, target.vulnerable);
       final absorbed = min(target.block, damage);
       final hpLoss = damage - absorbed;
       target = target.copyWith(
@@ -143,6 +157,20 @@ class DuelEngine {
       target = target.copyWith(vulnerable: target.vulnerable + card.vulnerable);
       players[targetUid] = target;
       details.add('${card.vulnerable} vulnerable');
+    }
+
+    if (card.poison > 0) {
+      target = target.copyWith(poison: target.poison + card.poison);
+      players[targetUid] = target;
+      details.add('${card.poison} poison');
+    }
+
+    if (card.focus > 0) {
+      updatedPlayer = updatedPlayer.copyWith(
+        focus: updatedPlayer.focus + card.focus,
+      );
+      players[uid] = updatedPlayer;
+      details.add('${card.focus} focus');
     }
 
     final suffix = details.isEmpty ? '' : ' (${details.join(', ')})';
@@ -207,16 +235,20 @@ class DuelEngine {
     return next;
   }
 
-  DuelPlayer _freshPlayer(String uid, Random rng) {
-    final deck = List<String>.of(duelStarterDeck())..shuffle(rng);
+  DuelPlayer _freshPlayer(String uid, DuelClass duelClass, Random rng) {
+    final deck = List<String>.of(duelStarterDeck(classId: duelClass.id))
+      ..shuffle(rng);
     return DuelPlayer(
       uid: uid,
-      hp: startingHp,
-      maxHp: startingHp,
+      classId: duelClass.id,
+      hp: duelClass.maxHp,
+      maxHp: duelClass.maxHp,
       block: 0,
       energy: 0,
-      maxEnergy: maxEnergy,
+      maxEnergy: duelClass.maxEnergy,
       vulnerable: 0,
+      poison: 0,
+      focus: 0,
       hand: const [],
       drawPile: deck,
       discardPile: const [],
@@ -228,13 +260,43 @@ class DuelEngine {
     if (player == null) throw const DuelException('Player not found.');
 
     final players = Map<String, DuelPlayer>.of(state.players);
-    players[uid] = player.copyWith(block: 0, energy: player.maxEnergy);
+    var current = player;
+    var next = state;
 
-    var next = state.copyWith(
+    if (current.poison > 0) {
+      final poisonDamage = current.poison;
+      current = current.copyWith(
+        hp: max(0, current.hp - poisonDamage),
+        poison: max(0, current.poison - 1),
+      );
+      players[uid] = current;
+      next = next.copyWith(
+        players: players,
+        log: _appendLog(
+          next.log,
+          DuelLogEntry(uid: uid, text: 'takes $poisonDamage poison damage.'),
+        ),
+      );
+
+      if (current.hp <= 0) {
+        final winner = next.otherUid(uid);
+        return next.copyWith(
+          status: 'finished',
+          winner: winner,
+          log: _appendLog(
+            next.log,
+            DuelLogEntry(uid: winner, text: 'wins the duel!'),
+          ),
+        );
+      }
+    }
+
+    players[uid] = current.copyWith(block: 0, energy: current.maxEnergy);
+    next = next.copyWith(
       players: players,
       turn: uid,
       log: _appendLog(
-        state.log,
+        next.log,
         DuelLogEntry(uid: uid, text: 'starts their turn.'),
       ),
     );
@@ -276,6 +338,9 @@ class DuelEngine {
     if (vulnerable <= 0) return damage;
     return (damage * 3) ~/ 2;
   }
+
+  DuelClass _classFor(String classId) =>
+      duelClasses[classId] ?? duelClasses[defaultDuelClassId]!;
 
   List<DuelLogEntry> _appendLog(List<DuelLogEntry> log, DuelLogEntry entry) {
     final next = List<DuelLogEntry>.of(log)..add(entry);
