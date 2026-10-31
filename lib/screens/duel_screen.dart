@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/duel.dart';
 import '../services/chat_service.dart';
 import '../services/duel_service.dart';
+import '../services/duel_sfx.dart';
 
 class DuelScreen extends StatefulWidget {
   const DuelScreen({
@@ -27,9 +28,24 @@ class DuelScreen extends StatefulWidget {
 class _DuelScreenState extends State<DuelScreen> {
   final DuelService _service = DuelService();
   bool _busy = false;
+  late bool _soundEnabled;
+  bool _outcomeAnnounced = false;
 
-  Future<void> _playCard(int index) async {
+  @override
+  void initState() {
+    super.initState();
+    _soundEnabled = DuelSfx.instance.enabled;
+  }
+
+  @override
+  void dispose() {
+    DuelSfx.instance.stop();
+    super.dispose();
+  }
+
+  Future<void> _playCard(int index, DuelCard card) async {
     if (_busy) return;
+    DuelSfx.instance.play(card.kind == 'attack' ? 'hit' : 'card');
     setState(() => _busy = true);
     try {
       await _service.playCard(
@@ -47,6 +63,7 @@ class _DuelScreenState extends State<DuelScreen> {
 
   Future<void> _endTurn() async {
     if (_busy) return;
+    DuelSfx.instance.play('turn');
     setState(() => _busy = true);
     try {
       await _service.endTurn(
@@ -83,10 +100,36 @@ class _DuelScreenState extends State<DuelScreen> {
         .showSnackBar(SnackBar(content: Text('$error')));
   }
 
+  void _toggleSound() {
+    final enabled = !_soundEnabled;
+    setState(() => _soundEnabled = enabled);
+    DuelSfx.instance.setEnabled(enabled);
+    if (!enabled) DuelSfx.instance.stop();
+  }
+
+  void _announceOutcome(DuelState state) {
+    if (state.isActive) {
+      _outcomeAnnounced = false;
+      return;
+    }
+    if (!state.isFinished || _outcomeAnnounced) return;
+    _outcomeAnnounced = true;
+    DuelSfx.instance.play(state.winner == widget.myUid ? 'win' : 'lose');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Duel')),
+      appBar: AppBar(
+        title: const Text('Duel'),
+        actions: [
+          IconButton(
+            tooltip: _soundEnabled ? 'Mute sounds' : 'Enable sounds',
+            onPressed: _toggleSound,
+            icon: Icon(_soundEnabled ? Icons.volume_up : Icons.volume_off),
+          ),
+        ],
+      ),
       body: StreamBuilder<DuelState?>(
         stream: _service.watchDuel(widget.room, widget.gameId),
         builder: (context, snapshot) {
@@ -116,6 +159,7 @@ class _DuelScreenState extends State<DuelScreen> {
             return const Center(child: Text('Duel unavailable.'));
           }
 
+          _announceOutcome(state);
           final myTurn = state.isActive && state.turn == widget.myUid;
 
           return SafeArea(
@@ -410,6 +454,7 @@ class _LogPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final entries = state.log.reversed.take(8).toList(growable: false);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -437,10 +482,11 @@ class _LogPanel extends StatelessWidget {
                     : '${_nameFor(entry.uid)} ${entry.text}',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: entry.uid.isEmpty
-                      ? Theme.of(context).colorScheme.onSurfaceVariant
-                      : entry.uid == myUid
-                      ? Theme.of(context).colorScheme.primary
-                      : Theme.of(context).colorScheme.tertiary,
+                      ? scheme.onSurfaceVariant
+                      : _logColor(
+                          scheme,
+                          entry.uid == myUid ? scheme.primary : scheme.tertiary,
+                        ),
                   fontWeight: entry.uid.isEmpty
                       ? FontWeight.normal
                       : FontWeight.w600,
@@ -449,6 +495,11 @@ class _LogPanel extends StatelessWidget {
             ),
       ],
     );
+  }
+
+  Color _logColor(ColorScheme scheme, Color color) {
+    if (scheme.brightness == Brightness.dark) return color;
+    return Color.lerp(color, Colors.black, 0.45)!;
   }
 
   String _nameFor(String uid) {
@@ -474,7 +525,7 @@ class _HandPanel extends StatelessWidget {
   final bool myTurn;
   final bool busy;
   final String opponentName;
-  final ValueChanged<int> onPlay;
+  final void Function(int index, DuelCard card) onPlay;
   final VoidCallback onEndTurn;
   final VoidCallback onRestart;
 
@@ -530,7 +581,7 @@ class _HandPanel extends StatelessWidget {
                       return _DuelCardTile(
                         card: card,
                         enabled: myTurn && !busy,
-                        onTap: () => onPlay(index),
+                        onTap: () => onPlay(index, card),
                       );
                     },
                   ),
