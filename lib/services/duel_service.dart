@@ -116,19 +116,6 @@ class DuelService {
     );
   }
 
-  Future<void> takeRewardDraft({
-    required ChatRoom room,
-    required String gameId,
-    required String uid,
-    required String cardId,
-  }) {
-    return _mutate(
-      room,
-      gameId,
-      (state) => _engine.takeRewardDraft(state, uid: uid, cardId: cardId),
-    );
-  }
-
   Future<void> endTurn({
     required ChatRoom room,
     required String gameId,

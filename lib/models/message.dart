@@ -26,7 +26,7 @@ class Message {
   /// no type field and are treated as text.
   final String type;
 
-  /// Id of the duel document for a game message, or ''.
+  /// Id of the Knucklebones game document for a game message, or ''.
   final String gameId;
 
   /// Download URL and Storage path for a photo message. Empty for text.
@@ -54,7 +54,7 @@ class Message {
 
   /// Short label used when this message is quoted or shown in a notification.
   String get preview {
-    if (isGame) return '[Duel]';
+    if (isGame) return '[Knucklebones]';
     return isImage ? '[Photo]' : text;
   }
 

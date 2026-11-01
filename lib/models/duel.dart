@@ -17,8 +17,6 @@ class DuelCard {
     this.poison = 0,
     this.focus = 0,
     this.focusMultiplier = 0,
-    this.cleanse = 0,
-    this.heal = 0,
   });
 
   final String id;
@@ -32,8 +30,6 @@ class DuelCard {
   final int poison;
   final int focus;
   final int focusMultiplier;
-  final int cleanse;
-  final int heal;
 
   /// 'attack' or 'skill'; used only for colouring the card.
   final String kind;
@@ -200,154 +196,7 @@ const Map<String, DuelCard> duelCards = {
     focusMultiplier: 2,
     kind: 'attack',
   ),
-  'cleanse': DuelCard(
-    id: 'cleanse',
-    name: 'Cleanse',
-    cost: 1,
-    description: 'Remove Poison and Vulnerable from yourself.',
-    damage: 0,
-    block: 0,
-    draw: 0,
-    vulnerable: 0,
-    poison: 0,
-    focus: 0,
-    focusMultiplier: 0,
-    cleanse: 1,
-    kind: 'skill',
-  ),
-  'rest': DuelCard(
-    id: 'rest',
-    name: 'Rest',
-    cost: 1,
-    description: 'Heal 4 HP.',
-    damage: 0,
-    block: 0,
-    draw: 0,
-    vulnerable: 0,
-    poison: 0,
-    focus: 0,
-    focusMultiplier: 0,
-    cleanse: 0,
-    heal: 4,
-    kind: 'skill',
-  ),
-  'strike_plus': DuelCard(
-    id: 'strike_plus',
-    name: 'Strike+',
-    cost: 2,
-    description: 'Deal 10 damage.',
-    damage: 10,
-    block: 0,
-    draw: 0,
-    vulnerable: 0,
-    kind: 'attack',
-  ),
-  'defend_plus': DuelCard(
-    id: 'defend_plus',
-    name: 'Defend+',
-    cost: 2,
-    description: 'Gain 8 block.',
-    damage: 0,
-    block: 8,
-    draw: 0,
-    vulnerable: 0,
-    kind: 'skill',
-  ),
-  'bash_plus': DuelCard(
-    id: 'bash_plus',
-    name: 'Bash+',
-    cost: 3,
-    description: 'Deal 12 damage. Apply 3 Vulnerable.',
-    damage: 12,
-    block: 0,
-    draw: 0,
-    vulnerable: 3,
-    kind: 'attack',
-  ),
-  'quick_jab_plus': DuelCard(
-    id: 'quick_jab_plus',
-    name: 'Quick Jab+',
-    cost: 1,
-    description: 'Deal 5 damage.',
-    damage: 5,
-    block: 0,
-    draw: 0,
-    vulnerable: 0,
-    kind: 'attack',
-  ),
-  'poison_stab_plus': DuelCard(
-    id: 'poison_stab_plus',
-    name: 'Poison Stab+',
-    cost: 2,
-    description: 'Deal 5 damage. Apply 4 Poison.',
-    damage: 5,
-    block: 0,
-    draw: 0,
-    vulnerable: 0,
-    poison: 4,
-    kind: 'attack',
-  ),
-  'deadly_poison_plus': DuelCard(
-    id: 'deadly_poison_plus',
-    name: 'Deadly Poison+',
-    cost: 2,
-    description: 'Apply 6 Poison. Poison ignores block.',
-    damage: 0,
-    block: 0,
-    draw: 0,
-    vulnerable: 0,
-    poison: 6,
-    kind: 'skill',
-  ),
-  'zap_plus': DuelCard(
-    id: 'zap_plus',
-    name: 'Zap+',
-    cost: 1,
-    description: 'Gain 2 Focus.',
-    damage: 0,
-    block: 0,
-    draw: 0,
-    vulnerable: 0,
-    focus: 2,
-    kind: 'skill',
-  ),
-  'arcane_bolt_plus': DuelCard(
-    id: 'arcane_bolt_plus',
-    name: 'Arcane Bolt+',
-    cost: 2,
-    description: 'Deal 6 damage, plus 3 per Focus.',
-    damage: 6,
-    block: 0,
-    draw: 0,
-    vulnerable: 0,
-    focusMultiplier: 3,
-    kind: 'attack',
-  ),
-  'fireball_plus': DuelCard(
-    id: 'fireball_plus',
-    name: 'Fireball+',
-    cost: 3,
-    description: 'Deal 10 damage, plus 3 per Focus.',
-    damage: 10,
-    block: 0,
-    draw: 0,
-    vulnerable: 0,
-    focusMultiplier: 3,
-    kind: 'attack',
-  ),
 };
-
-List<String> rewardDraftOptions({required String classId}) {
-  switch (classId) {
-    case 'ninja':
-      return const <String>['rest', 'quick_jab_plus', 'poison_stab_plus'];
-    case 'wizard':
-      return const <String>['rest', 'zap_plus', 'arcane_bolt_plus'];
-    case 'knight':
-    default:
-      return const <String>['rest', 'strike_plus', 'defend_plus'];
-  }
-}
 
 const String defaultDuelClassId = 'knight';
 
@@ -565,8 +414,6 @@ class DuelState {
     required this.shuffleSeed,
     required this.players,
     required this.log,
-    required this.draftRound,
-    required this.draftPicks,
   });
 
   final String gameId;
@@ -583,8 +430,6 @@ class DuelState {
   final int shuffleSeed;
   final Map<String, DuelPlayer> players;
   final List<DuelLogEntry> log;
-  final int draftRound;
-  final Map<String, String> draftPicks;
 
   bool get isLobby => status == 'lobby';
   bool get isActive => status == 'active';
@@ -608,8 +453,6 @@ class DuelState {
     int? shuffleSeed,
     Map<String, DuelPlayer>? players,
     List<DuelLogEntry>? log,
-    int? draftRound,
-    Map<String, String>? draftPicks,
   }) => DuelState(
     gameId: gameId,
     participants: participants,
@@ -621,8 +464,6 @@ class DuelState {
     shuffleSeed: shuffleSeed ?? this.shuffleSeed,
     players: players ?? this.players,
     log: log ?? this.log,
-    draftRound: draftRound ?? this.draftRound,
-    draftPicks: draftPicks ?? this.draftPicks,
   );
 
   Map<String, dynamic> toMap() => {
@@ -635,8 +476,6 @@ class DuelState {
     'shuffleSeed': shuffleSeed,
     'players': players.map((key, value) => MapEntry(key, value.toMap())),
     'log': log.map((entry) => entry.toMap()).toList(growable: false),
-    'draftRound': draftRound,
-    'draftPicks': draftPicks,
   };
 
   factory DuelState.fromMap(String gameId, Map<String, dynamic> map) {
@@ -674,8 +513,6 @@ class DuelState {
       shuffleSeed: (map['shuffleSeed'] as num?)?.toInt() ?? 0,
       players: players,
       log: log,
-      draftRound: (map['draftRound'] as num?)?.toInt() ?? 0,
-      draftPicks: _stringMap(map['draftPicks']),
     );
   }
 }
@@ -683,14 +520,4 @@ class DuelState {
 List<String> _stringList(Object? value) {
   if (value is List) return value.whereType<String>().toList(growable: false);
   return const <String>[];
-}
-
-Map<String, String> _stringMap(Object? value) {
-  final map = <String, String>{};
-  if (value is Map) {
-    value.forEach((key, val) {
-      if (key is String && val is String) map[key] = val;
-    });
-  }
-  return map;
 }

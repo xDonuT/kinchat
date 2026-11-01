@@ -14,12 +14,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/message.dart';
 import '../models/reaction.dart';
 import '../services/chat_service.dart';
-import '../services/duel_service.dart';
+import '../services/knuckle_engine.dart';
+import '../services/knuckle_service.dart';
 import '../services/kuteken_emoji.dart';
 import '../services/notification_service.dart';
 import '../services/wallpaper_service.dart';
-import '../widgets/duel_card.dart';
+import '../widgets/knuckle_card.dart';
 import 'image_viewer_screen.dart';
+import 'knuckle_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({
@@ -43,12 +45,12 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final ChatService _chat = ChatService();
-  final DuelService _duel = DuelService();
   final ImagePicker _picker = ImagePicker();
   final TextEditingController _input = TextEditingController();
   String? _wallpaperPath;
   Message? _replyTo;
   Timer? _draftTimer;
+  bool _startingGame = false;
 
   String get _draftKey => 'chat_draft_${widget.uid}_${widget.room.id}';
 
@@ -99,26 +101,39 @@ class _ChatScreenState extends State<ChatScreen> {
     return parts.first == widget.uid ? parts.last : parts.first;
   }
 
-  Future<void> _startDuel() async {
-    final opponent = _otherUid;
-    if (opponent.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not start a duel in this chat.')),
-      );
-      return;
-    }
+  Future<void> _startKnuckle() async {
+    if (_startingGame) return;
+    final opponentUid = _otherUid;
+    if (opponentUid.isEmpty) return;
 
+    setState(() => _startingGame = true);
     try {
-      await _duel.createDuel(
+      final gameId = await KnuckleService().createGame(
         room: widget.room,
         uid: widget.uid,
-        opponentUid: opponent,
+        opponentUid: opponentUid,
+      );
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => KnuckleScreen(
+            room: widget.room,
+            gameId: gameId,
+            myUid: widget.uid,
+            myName: widget.names[widget.uid] ?? 'You',
+            opponentName: widget.names[opponentUid] ?? 'Opponent',
+          ),
+        ),
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Could not start duel: $error')));
+      final message = error is KnuckleException
+          ? error.message
+          : 'Could not start the game.';
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+    } finally {
+      if (mounted) setState(() => _startingGame = false);
     }
   }
 
@@ -357,7 +372,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   controller: _input,
                   onSend: _send,
                   onPickPhoto: _pickAndSendPhoto,
-                  onStartDuel: _startDuel,
+                  onStartKnuckle: _startKnuckle,
                   replyTo: _replyTo,
                   onCancelReply: _cancelReply,
                 ),
@@ -856,7 +871,7 @@ class _BubbleState extends State<_Bubble> {
                               if (isGame)
                                 Align(
                                   alignment: Alignment.centerLeft,
-                                  child: DuelCardBubble(
+                                  child: KnuckleCardBubble(
                                     room: widget.room,
                                     gameId: widget.message.gameId,
                                     myUid: widget.myUid,
@@ -1169,7 +1184,7 @@ class _Composer extends StatelessWidget {
     required this.controller,
     required this.onSend,
     required this.onPickPhoto,
-    required this.onStartDuel,
+    required this.onStartKnuckle,
     required this.onCancelReply,
     this.replyTo,
   });
@@ -1177,7 +1192,7 @@ class _Composer extends StatelessWidget {
   final TextEditingController controller;
   final VoidCallback onSend;
   final VoidCallback onPickPhoto;
-  final VoidCallback onStartDuel;
+  final VoidCallback onStartKnuckle;
   final VoidCallback onCancelReply;
   final Message? replyTo;
 
@@ -1221,8 +1236,8 @@ class _Composer extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               IconButton(
-                tooltip: 'Start duel',
-                onPressed: onStartDuel,
+                tooltip: 'Start Knucklebones',
+                onPressed: onStartKnuckle,
                 icon: const Icon(Icons.sports_esports_outlined),
               ),
               IconButton(

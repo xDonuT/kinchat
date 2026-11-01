@@ -94,7 +94,7 @@ service cloud.firestore {
         && validReplyFields();
     }
 
-    // A game message only points at a duel document; the duel itself is in the
+    // A game message only points at a Knucklebones document; the game is in the
     // games subcollection and can be updated while this message stays immutable.
     function validGameMessage() {
       let d = request.resource.data;
@@ -164,47 +164,68 @@ service cloud.firestore {
              isParticipant(convId);
     }
 
-    // Shape of a duel document. The rules keep it well-formed and limited to
-    // the two people in the conversation; the turn rules live in DuelEngine.
-    function validDuel() {
+    function validColumn(column) {
+      return column is list
+        && column.size() <= 3
+        && (column.size() < 1
+            || (column[0] is int && column[0] >= 1 && column[0] <= 6))
+        && (column.size() < 2
+            || (column[1] is int && column[1] >= 1 && column[1] <= 6))
+        && (column.size() < 3
+            || (column[2] is int && column[2] >= 1 && column[2] <= 6));
+    }
+
+    function validColumns(columns) {
+      return columns is list
+        && columns.size() == 3
+        && validColumn(columns[0])
+        && validColumn(columns[1])
+        && validColumn(columns[2]);
+    }
+
+    // Shape of a Knucklebones game. Turn order and scoring live in
+    // KnuckleEngine; these rules keep the document well-formed and limited
+    // to the two people in the conversation.
+    function validKnuckle() {
       let d = request.resource.data;
       return d.keys().hasOnly([
            'participants',
            'createdBy',
            'status',
-           'winner',
            'turn',
-           'turnCount',
-         'shuffleSeed',
-         'players',
-         'log',
-         'draftRound',
-         'draftPicks'
-       ])
+           'pendingRoll',
+           'players',
+           'winner',
+           'createdAt',
+           'updatedAt'
+         ])
         && d.participants is list
         && d.participants.size() == 2
         && request.auth.uid in d.participants
         && d.createdBy is string
         && d.createdBy in d.participants
         && d.status is string
-        && (d.status == 'lobby' || d.status == 'active' || d.status == 'finished')
-        && d.winner is string
-        && (d.winner == '' || d.winner in d.participants)
+        && (d.status == 'active' || d.status == 'finished')
         && d.turn is string
         && d.turn in d.participants
-        && d.turnCount is int
-        && d.turnCount >= 1
-        && d.turnCount <= 10000
-        && d.shuffleSeed is int
-        && d.players is map
-        && d.players.keys().hasOnly(d.participants)
-        && d.log is list
-        && d.log.size() <= 50
-        && d.draftRound is int
-        && d.draftRound >= 0
-        && d.draftPicks is map
-        && d.draftPicks.keys().hasOnly(d.participants)
-        && d.draftPicks.values().every((v) => v is string);
+        && d.pendingRoll is int
+        && d.pendingRoll >= 0
+        && d.pendingRoll <= 6
+        && d.winner is string
+        && (d.winner == '' || d.winner == 'draw' || d.winner in d.participants)
+        && d.players is list
+        && d.players.size() == 2
+        && d.players[0] is map
+        && d.players[1] is map
+        && d.players[0].keys().hasOnly(['uid', 'columns'])
+        && d.players[1].keys().hasOnly(['uid', 'columns'])
+        && d.players[0].uid is string
+        && d.players[1].uid is string
+        && d.players[0].uid in d.participants
+        && d.players[1].uid in d.participants
+        && d.players[0].uid != d.players[1].uid
+        && validColumns(d.players[0].columns)
+        && validColumns(d.players[1].columns);
     }
 
     // ------------------------------------------------------------------
@@ -341,14 +362,17 @@ service cloud.firestore {
 
         allow create: if isParticipant(convId)
           && areContacts(convId)
-          && validDuel()
-          && request.resource.data.createdBy == request.auth.uid;
+          && validKnuckle()
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.turn == request.auth.uid;
 
         allow update: if isParticipant(convId)
           && areContacts(convId)
-          && validDuel()
+          && validKnuckle()
           && request.resource.data.createdBy == resource.data.createdBy
-          && request.resource.data.participants == resource.data.participants;
+          && request.resource.data.participants == resource.data.participants
+          && (resource.data.status == 'finished'
+              || request.auth.uid == resource.data.turn);
 
         allow delete: if isParticipant(convId);
       }
