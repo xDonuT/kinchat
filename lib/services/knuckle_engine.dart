@@ -119,8 +119,14 @@ class KnuckleState {
   };
 
   factory KnuckleState.fromMap(String gameId, Map<String, dynamic> map) {
-    final rawParticipants = map['participants'] as List? ?? const <dynamic>[];
-    final rawPlayers = map['players'] as List? ?? const <dynamic>[];
+    final rawParticipants = map['participants'];
+    final rawPlayers = map['players'];
+    if (rawParticipants is! List) {
+      throw KnuckleException('This game is missing its players.');
+    }
+    if (rawPlayers is! List) {
+      throw KnuckleException('This game uses the retired duel format.');
+    }
     return KnuckleState(
       gameId: gameId,
       participants: [

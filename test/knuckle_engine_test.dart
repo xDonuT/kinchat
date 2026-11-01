@@ -250,6 +250,19 @@ void main() {
     expect(restored.toMap(), game.toMap());
   });
 
+  test('rejects retired duel documents', () {
+    expect(
+      () => KnuckleState.fromMap('game', {
+        'participants': ['a', 'b'],
+        'createdBy': 'a',
+        'status': 'lobby',
+        'turn': 'a',
+        'players': {'a': <String, dynamic>{}, 'b': <String, dynamic>{}},
+      }),
+      throwsA(isA<KnuckleException>()),
+    );
+  });
+
   test('rejects players outside the game', () {
     final game = stateWith();
 

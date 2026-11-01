@@ -28,7 +28,9 @@ class KnuckleService {
   Stream<KnuckleState?> watchKnuckle(ChatRoom room, String gameId) =>
       _gameRef(room, gameId).snapshots().map((snapshot) {
         final data = snapshot.data();
-        if (data == null) return null;
+        if (data == null) {
+          throw KnuckleException('This game no longer exists.');
+        }
         return KnuckleState.fromMap(snapshot.id, data);
       });
 

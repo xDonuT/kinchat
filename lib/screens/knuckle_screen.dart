@@ -195,6 +195,9 @@ class _KnuckleScreenState extends State<KnuckleScreen> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final state = _state;
+    final errorText = _error is KnuckleException
+        ? (_error as KnuckleException).message
+        : 'Could not load this game.';
 
     if (_error != null && state == null) {
       return Scaffold(
@@ -212,9 +215,22 @@ class _KnuckleScreenState extends State<KnuckleScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Could not load this game.',
+                  errorText,
+                  textAlign: TextAlign.center,
                   style: theme.textTheme.titleMedium,
                 ),
+                if (_error is! KnuckleException) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '$_error',
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
                 FilledButton(
                   onPressed: () {

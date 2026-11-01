@@ -57,6 +57,13 @@ class _KnuckleCardBubbleState extends State<KnuckleCardBubble> {
     return StreamBuilder<KnuckleState?>(
       stream: _stream,
       builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          final message = snapshot.error is KnuckleException
+              ? (snapshot.error as KnuckleException).message
+              : 'This game could not be loaded.';
+          return _UnavailableCard(message: message);
+        }
+
         final state = snapshot.data;
         final myScore = state?.scoreFor(widget.myUid) ?? 0;
         final theirScore = state == null
@@ -185,6 +192,59 @@ class _KnuckleCardBubbleState extends State<KnuckleCardBubble> {
           ),
         );
       },
+    );
+  }
+}
+
+class _UnavailableCard extends StatelessWidget {
+  const _UnavailableCard({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Container(
+      width: 270,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.history_toggle_off_rounded,
+            color: scheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Knucklebones',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: scheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  message,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
