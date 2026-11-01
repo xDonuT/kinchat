@@ -130,8 +130,9 @@ class _ChatScreenState extends State<ChatScreen> {
       final message = error is KnuckleException
           ? error.message
           : 'Could not start the game.';
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$message\n$error'), duration: const Duration(seconds: 8)),
+      );
     } finally {
       if (mounted) setState(() => _startingGame = false);
     }
