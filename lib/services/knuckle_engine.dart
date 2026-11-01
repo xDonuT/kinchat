@@ -23,19 +23,39 @@ class KnucklePlayer {
 
   int get score => KnuckleState.boardScore(columns);
 
-  Map<String, dynamic> toMap() => {'uid': uid, 'columns': columns};
+  Map<String, dynamic> toMap() => {
+    'uid': uid,
+    'col0': columns[0],
+    'col1': columns[1],
+    'col2': columns[2],
+  };
 
   factory KnucklePlayer.fromMap(Map<String, dynamic> map) {
-    final rawColumns = map['columns'] as List? ?? const <dynamic>[];
+    List<int> readList(dynamic raw) {
+      if (raw is! List) return const <int>[];
+      return [for (final die in raw) (die as num).toInt()];
+    }
+
+    List<int> readCol(String key) {
+      final raw = map[key];
+      if (raw is List) return readList(raw);
+      return const <int>[];
+    }
+
+    final rawColumns = map['columns'];
+    if (rawColumns is List) {
+      return KnucklePlayer(
+        uid: map['uid'] as String? ?? '',
+        columns: [
+          for (var i = 0; i < KnuckleState.columnCount; i++)
+            readList(i < rawColumns.length ? rawColumns[i] : const <int>[]),
+        ],
+      );
+    }
+
     return KnucklePlayer(
       uid: map['uid'] as String? ?? '',
-      columns: [
-        for (final column in rawColumns)
-          [
-            for (final die in (column as List? ?? const <dynamic>[]))
-              (die as num).toInt(),
-          ],
-      ],
+      columns: [readCol('col0'), readCol('col1'), readCol('col2')],
     );
   }
 }

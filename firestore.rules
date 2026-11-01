@@ -217,15 +217,19 @@ service cloud.firestore {
         && d.players.size() == 2
         && d.players[0] is map
         && d.players[1] is map
-        && d.players[0].keys().hasOnly(['uid', 'columns'])
-        && d.players[1].keys().hasOnly(['uid', 'columns'])
+        && d.players[0].keys().hasOnly(['uid', 'col0', 'col1', 'col2'])
+        && d.players[1].keys().hasOnly(['uid', 'col0', 'col1', 'col2'])
         && d.players[0].uid is string
         && d.players[1].uid is string
         && d.players[0].uid in d.participants
         && d.players[1].uid in d.participants
         && d.players[0].uid != d.players[1].uid
-        && validColumns(d.players[0].columns)
-        && validColumns(d.players[1].columns);
+        && validColumn(d.players[0].col0)
+        && validColumn(d.players[0].col1)
+        && validColumn(d.players[0].col2)
+        && validColumn(d.players[1].col0)
+        && validColumn(d.players[1].col1)
+        && validColumn(d.players[1].col2);
     }
 
     // ------------------------------------------------------------------
@@ -336,7 +340,6 @@ service cloud.firestore {
         allow read: if mayReadThread(convId);
 
         allow create: if isParticipant(convId)
-          && areContacts(convId)
           && request.resource.data.senderId == request.auth.uid
           && (validTextMessage() || validImageMessage(convId) || validGameMessage());
 
@@ -361,13 +364,11 @@ service cloud.firestore {
         allow read: if isParticipant(convId);
 
         allow create: if isParticipant(convId)
-          && areContacts(convId)
           && validKnuckle()
           && request.resource.data.createdBy == request.auth.uid
           && request.resource.data.turn == request.auth.uid;
 
         allow update: if isParticipant(convId)
-          && areContacts(convId)
           && validKnuckle()
           && request.resource.data.createdBy == resource.data.createdBy
           && request.resource.data.participants == resource.data.participants

@@ -47,19 +47,19 @@ class KnuckleService {
       opponentUid: opponentUid,
     );
 
-    await _db.runTransaction((transaction) async {
-      transaction.set(gameRef, {
-        ...state.toMap(),
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-      transaction.set(messageRef, {
-        'senderId': uid,
-        'type': 'game',
-        'gameId': gameRef.id,
-        'sentAt': FieldValue.serverTimestamp(),
-      });
+    final batch = _db.batch();
+    batch.set(gameRef, {
+      ...state.toMap(),
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
     });
+    batch.set(messageRef, {
+      'senderId': uid,
+      'type': 'game',
+      'gameId': gameRef.id,
+      'sentAt': FieldValue.serverTimestamp(),
+    });
+    await batch.commit();
 
     return gameRef.id;
   }
@@ -112,6 +112,7 @@ class KnuckleService {
       final next = update(current);
       transaction.set(ref, {
         ...next.toMap(),
+        'createdAt': data['createdAt'],
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
       return next;
