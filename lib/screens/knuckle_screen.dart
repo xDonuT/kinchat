@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../services/chat_service.dart';
 import '../services/knuckle_engine.dart';
 import '../services/knuckle_service.dart';
+import '../services/knuckle_sfx.dart';
 
 class KnuckleScreen extends StatefulWidget {
   const KnuckleScreen({
@@ -173,8 +174,22 @@ class _KnuckleScreenState extends State<KnuckleScreen> {
     final message = error is KnuckleException
         ? error.message
         : 'Something went wrong. Try again.';
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Error'),
+        content: SingleChildScrollView(
+          child: SelectableText('$message\n\n$error'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 
   AppBar _appBar() {

@@ -1,19 +1,3 @@
-import 'dart:math';
-
-import 'package:cloud_firestore/cloud_firestore.dart';
-
-import 'chat_service.dart';
-import 'knuckle_engine.dart';
-
-class KnuckleService {
-  KnuckleService({FirebaseFirestore? db, Random? random})
-    : _db = db ?? FirebaseFirestore.instance,
-      _random = random ?? Random.secure();
-
-  final FirebaseFirestore _db;
-  final Random _random;
-  final KnuckleEngine _engine = const KnuckleEngine();
-
   CollectionReference<Map<String, dynamic>> _gamesFor(ChatRoom room) =>
       _db.collection(room.collection).doc(room.id).collection('games');
 
