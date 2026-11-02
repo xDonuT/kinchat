@@ -20,7 +20,7 @@ class KnuckleSfx {
     if (!_enabled) return;
     try {
       await _player.stop();
-      await _player.play(AssetSource('sfx/$name.wav'), volume: 0.25);
+      await _player.play(AssetSource('sfx/$name.wav'), volume: 0.35);
     } catch (error) {
       debugPrint('Knuckle sound failed: $error');
     }

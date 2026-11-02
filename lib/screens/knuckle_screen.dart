@@ -4,58 +4,131 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 import '../services/chat_service.dart';
+import '../services/knuckle_ai.dart';
+import '../services/knuckle_ai_profile.dart';
 import '../services/knuckle_engine.dart';
 import '../services/knuckle_service.dart';
 import '../services/knuckle_sfx.dart';
+import '../services/knuckle_stats.dart';
+import '../widgets/knuckle_leaderboard.dart';
 
 class KnuckleScreen extends StatefulWidget {
   const KnuckleScreen({
     super.key,
-    required this.room,
-    required this.gameId,
+    required ChatRoom this.room,
+    required String this.gameId,
     required this.myUid,
     required this.myName,
     required this.opponentName,
-  });
+  }) : aiMode = false,
+       difficulty = KnuckleAiDifficulty.normal;
 
-  final ChatRoom room;
-  final String gameId;
+  const KnuckleScreen.ai({
+    super.key,
+    required this.myUid,
+    required this.myName,
+    this.opponentName = 'Knuckle Bot',
+    this.difficulty = KnuckleAiDifficulty.normal,
+  }) : room = null,
+       gameId = null,
+       aiMode = true;
+
+  final ChatRoom? room;
+  final String? gameId;
+  final bool aiMode;
   final String myUid;
   final String myName;
   final String opponentName;
+  final KnuckleAiDifficulty difficulty;
 
   @override
   State<KnuckleScreen> createState() => _KnuckleScreenState();
 }
 
 class _KnuckleScreenState extends State<KnuckleScreen> {
+  static const String _aiUid = 'knuckle-ai';
+
   final KnuckleService _service = KnuckleService();
+  final KnuckleEngine _engine = const KnuckleEngine();
+  final KnuckleAi _ai = const KnuckleAi();
   final Random _random = Random();
+  final KnuckleSfx _sfx = KnuckleSfx.instance;
 
   StreamSubscription<KnuckleState?>? _subscription;
   KnuckleState? _state;
+  KnuckleStats? _stats;
+  KnuckleAiProfile _aiProfile = const KnuckleAiProfile();
   Object? _error;
   bool _busy = false;
   bool _rolling = false;
+  bool _statsRecorded = false;
+  KnuckleState? _lastSoundState;
   int _displayRoll = 1;
+
+  ChatRoom get _room => widget.room!;
+  String get _gameId => widget.gameId!;
+
+  String? get _currentOpponentId {
+    final state = _state;
+    if (state == null) return null;
+    if (widget.aiMode) return _aiUid;
+    try {
+      return state.otherUid(widget.myUid);
+    } catch (_) {
+      return null;
+    }
+  }
 
   @override
   void initState() {
     super.initState();
-    _listen();
+    if (widget.aiMode) {
+      _state = _engine.create(
+        gameId: 'local-ai',
+        createdBy: widget.myUid,
+        opponentUid: _aiUid,
+      );
+    } else {
+      _listen();
+    }
+    unawaited(_loadStats());
+    if (widget.aiMode) unawaited(_loadAiProfile());
+  }
+
+  Future<void> _loadStats() async {
+    final stats = await KnuckleStatsStore.load();
+    if (!mounted) return;
+    setState(() => _stats = stats);
+  }
+
+  Future<void> _loadAiProfile() async {
+    final profile = await KnuckleAiProfileStore.load();
+    if (!mounted) return;
+    setState(() => _aiProfile = profile);
   }
 
   void _listen() {
     _subscription?.cancel();
     _subscription = _service
-        .watchKnuckle(widget.room, widget.gameId)
+        .watchKnuckle(_room, _gameId)
         .listen(
           (state) {
             if (!mounted) return;
+            final previous = _lastSoundState;
+            _lastSoundState = state;
             setState(() {
               _state = state;
               _error = null;
             });
+            if (previous != null && state != null) {
+              if (previous.isFinished && !state.isFinished) {
+                _statsRecorded = false;
+              }
+              _playTransitionSounds(previous, state);
+              if (!previous.isFinished && state.isFinished) {
+                unawaited(_recordResult(state));
+              }
+            }
           },
           onError: (Object error) {
             if (!mounted) return;
@@ -79,11 +152,37 @@ class _KnuckleScreenState extends State<KnuckleScreen> {
       return;
     }
 
+    if (widget.aiMode) {
+      setState(() => _busy = true);
+      final value = 1 + _random.nextInt(6);
+      final next = _engine.roll(state, uid: widget.myUid, value: value);
+      _applyLocalState(state, next);
+      if (!mounted) return;
+      setState(() {
+        _rolling = true;
+        _displayRoll = 1 + _random.nextInt(6);
+      });
+
+      for (var tick = 0; tick < 7; tick++) {
+        await Future<void>.delayed(const Duration(milliseconds: 55));
+        if (!mounted) return;
+        setState(() => _displayRoll = 1 + _random.nextInt(6));
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _displayRoll = value;
+        _rolling = false;
+        _busy = false;
+      });
+      return;
+    }
+
     setState(() => _busy = true);
     try {
       final next = await _service.roll(
-        room: widget.room,
-        gameId: widget.gameId,
+        room: _room,
+        gameId: _gameId,
         uid: widget.myUid,
       );
       if (!mounted) return;
@@ -126,11 +225,30 @@ class _KnuckleScreenState extends State<KnuckleScreen> {
       return;
     }
 
+    if (widget.aiMode) {
+      setState(() => _busy = true);
+      try {
+        final next = _engine.place(state, uid: widget.myUid, column: column);
+        try {
+          await KnuckleAiProfileStore.recordPlacement(column);
+        } catch (_) {}
+        if (!mounted) return;
+        _applyLocalState(state, next);
+        setState(() => _busy = false);
+        if (!next.isFinished) unawaited(_runAiTurn());
+      } catch (error) {
+        if (!mounted) return;
+        setState(() => _busy = false);
+        _showError(error);
+      }
+      return;
+    }
+
     setState(() => _busy = true);
     try {
       final next = await _service.place(
-        room: widget.room,
-        gameId: widget.gameId,
+        room: _room,
+        gameId: _gameId,
         uid: widget.myUid,
         column: column,
       );
@@ -146,15 +264,96 @@ class _KnuckleScreenState extends State<KnuckleScreen> {
     }
   }
 
+  Future<void> _runAiTurn() async {
+    if (!widget.aiMode || _busy || _rolling) return;
+    final start = _state;
+    if (start == null || start.isFinished || start.turn != _aiUid) return;
+
+    setState(() {
+      _busy = true;
+      _rolling = true;
+      _displayRoll = 1 + _random.nextInt(6);
+    });
+
+    for (var tick = 0; tick < 5; tick++) {
+      await Future<void>.delayed(const Duration(milliseconds: 70));
+      if (!mounted) return;
+      setState(() => _displayRoll = 1 + _random.nextInt(6));
+    }
+
+    final value = 1 + _random.nextInt(6);
+    final rolled = _engine.roll(start, uid: _aiUid, value: value);
+    if (!mounted) return;
+    setState(() {
+      _displayRoll = value;
+      _rolling = false;
+    });
+    _applyLocalState(start, rolled);
+
+    await Future<void>.delayed(const Duration(milliseconds: 620));
+    if (!mounted) return;
+    final current = _state;
+    if (current == null ||
+        current.isFinished ||
+        current.turn != _aiUid ||
+        current.pendingRoll == 0) {
+      setState(() {
+        _rolling = false;
+        _busy = false;
+      });
+      return;
+    }
+
+    try {
+      final column = _ai.chooseColumn(
+        state: current,
+        aiUid: _aiUid,
+        difficulty: widget.difficulty,
+        profile: _aiProfile,
+      );
+      final placed = _engine.place(current, uid: _aiUid, column: column);
+      _applyLocalState(current, placed);
+    } catch (error) {
+      if (mounted) _showError(error);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _rolling = false;
+          _busy = false;
+        });
+      }
+    }
+  }
+
   Future<void> _rematch() async {
     final state = _state;
     if (_busy || _rolling || state == null || !state.isFinished) return;
 
+    _statsRecorded = false;
+    if (widget.aiMode) {
+      setState(() => _busy = true);
+      try {
+        final next = _engine.rematch(state, uid: widget.myUid);
+        _applyLocalState(state, next);
+        if (!mounted) return;
+        setState(() {
+          _busy = false;
+          _displayRoll = 1;
+        });
+        if (next.turn == _aiUid) unawaited(_runAiTurn());
+      } catch (error) {
+        if (!mounted) return;
+        setState(() => _busy = false);
+        _showError(error);
+      }
+      return;
+    }
+
     setState(() => _busy = true);
     try {
       final next = await _service.rematch(
-        room: widget.room,
-        gameId: widget.gameId,
+        room: _room,
+        gameId: _gameId,
         uid: widget.myUid,
       );
       if (!mounted) return;
@@ -167,6 +366,63 @@ class _KnuckleScreenState extends State<KnuckleScreen> {
       if (!mounted) return;
       setState(() => _busy = false);
       _showError(error);
+    }
+  }
+
+  void _applyLocalState(KnuckleState previous, KnuckleState next) {
+    _lastSoundState = next;
+    setState(() => _state = next);
+    _playTransitionSounds(previous, next);
+    if (!previous.isFinished && next.isFinished) {
+      unawaited(_recordResult(next));
+    }
+  }
+
+  Future<void> _recordResult(KnuckleState state) async {
+    if (_statsRecorded) return;
+    _statsRecorded = true;
+    final opponentId = widget.aiMode ? _aiUid : _currentOpponentId;
+    if (opponentId == null) return;
+    try {
+      if (widget.aiMode) {
+        await KnuckleAiProfileStore.recordResult();
+        final profile = await KnuckleAiProfileStore.load();
+        if (mounted) setState(() => _aiProfile = profile);
+      }
+      final stats = await KnuckleStatsStore.record(
+        myUid: widget.myUid,
+        opponentId: opponentId,
+        opponentName: widget.opponentName,
+        winner: state.winner,
+      );
+      if (!mounted) return;
+      setState(() => _stats = stats);
+    } catch (error) {
+      debugPrint('Knuckle stats failed: $error');
+    }
+  }
+
+  void _playTransitionSounds(KnuckleState previous, KnuckleState next) {
+    if (!previous.isFinished && next.isFinished) {
+      unawaited(_sfx.play(next.winner == widget.myUid ? 'win' : 'lose'));
+      return;
+    }
+    if (previous.isFinished || next.isFinished) return;
+
+    if (previous.pendingRoll == 0 && next.pendingRoll != 0) {
+      unawaited(_sfx.play('roll'));
+      return;
+    }
+
+    if (previous.pendingRoll != 0 && next.pendingRoll == 0) {
+      final victim = previous.otherUid(previous.turn);
+      final before = previous
+          .columnsFor(victim)
+          .fold<int>(0, (total, dice) => total + dice.length);
+      final after = next
+          .columnsFor(victim)
+          .fold<int>(0, (total, dice) => total + dice.length);
+      unawaited(_sfx.play(after < before ? 'hit' : 'place'));
     }
   }
 
@@ -194,8 +450,20 @@ class _KnuckleScreenState extends State<KnuckleScreen> {
 
   AppBar _appBar() {
     return AppBar(
-      title: const Text('Knucklebones'),
+      title: Text(
+        widget.aiMode
+            ? 'Knucklebones · ${widget.difficulty.label}'
+            : 'Knucklebones',
+      ),
       actions: [
+        IconButton(
+          onPressed: () => showKnuckleLeaderboard(
+            context,
+            highlightId: _currentOpponentId,
+          ),
+          icon: const Icon(Icons.leaderboard_outlined),
+          tooltip: 'Knuckle leaderboard',
+        ),
         IconButton(
           onPressed: _showRules,
           icon: const Icon(Icons.help_outline_rounded),
@@ -282,6 +550,7 @@ class _KnuckleScreenState extends State<KnuckleScreen> {
     final canPlace = myTurn && pending != 0 && !_busy && !_rolling;
     final canRoll = myTurn && pending == 0 && !_busy && !_rolling;
     final finished = state.isFinished;
+    final statsLine = _stats?.forOpponent(_currentOpponentId);
 
     final String statusText;
     final Color statusColor;
@@ -398,6 +667,20 @@ class _KnuckleScreenState extends State<KnuckleScreen> {
                       label: Text(finished ? 'Rematch' : 'Roll'),
                       style: FilledButton.styleFrom(
                         minimumSize: const Size(180, 46),
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      statsLine == null
+                          ? 'First game vs ${widget.opponentName}'
+                          : 'vs ${statsLine.name}: '
+                                '${statsLine.wins}W · '
+                                '${statsLine.losses}L · '
+                                '${statsLine.draws}D',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
                       ),
                     ),
                   ],

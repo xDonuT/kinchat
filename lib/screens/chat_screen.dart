@@ -14,12 +14,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/message.dart';
 import '../models/reaction.dart';
 import '../services/chat_service.dart';
+import '../services/knuckle_ai_profile.dart';
 import '../services/knuckle_engine.dart';
 import '../services/knuckle_service.dart';
 import '../services/kuteken_emoji.dart';
 import '../services/notification_service.dart';
 import '../services/wallpaper_service.dart';
 import '../widgets/knuckle_card.dart';
+import '../widgets/knuckle_leaderboard.dart';
 import 'image_viewer_screen.dart';
 import 'knuckle_screen.dart';
 
@@ -99,6 +101,128 @@ class _ChatScreenState extends State<ChatScreen> {
     final parts = widget.room.id.split('__');
     if (parts.length != 2) return '';
     return parts.first == widget.uid ? parts.last : parts.first;
+  }
+
+  Future<void> _chooseKnuckle() async {
+    final opponentUid = _otherUid;
+    final opponentName = widget.names[opponentUid] ?? 'opponent';
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.sports_esports_outlined),
+              title: Text(
+                opponentUid.isEmpty
+                    ? 'Play with an opponent'
+                    : 'Play with $opponentName',
+              ),
+              subtitle: const Text('Send a Knucklebones invite in this chat'),
+              enabled: opponentUid.isNotEmpty,
+              onTap: opponentUid.isEmpty
+                  ? null
+                  : () => Navigator.of(sheetContext).pop('pvp'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.smart_toy_outlined),
+              title: const Text('Practice vs AI'),
+              subtitle: const Text('Play locally, no invite needed'),
+              onTap: () => Navigator.of(sheetContext).pop('ai'),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.leaderboard_outlined),
+              title: const Text('Knuckle leaderboard'),
+              subtitle: const Text('Your local win/loss records'),
+              onTap: () => Navigator.of(sheetContext).pop('stats'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || choice == null) return;
+    if (choice == 'pvp') {
+      await _startKnuckle();
+    } else if (choice == 'ai') {
+      await _startKnuckleAi();
+    } else if (choice == 'stats') {
+      await showKnuckleLeaderboard(context);
+    }
+  }
+
+  Future<void> _startKnuckleAi() async {
+    final saved = await KnuckleAiProfileStore.loadDifficulty();
+    if (!mounted) return;
+
+    final difficulty = await showModalBottomSheet<KnuckleAiDifficulty>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        final theme = Theme.of(sheetContext);
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.smart_toy_outlined,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Practice vs AI',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              for (final option in KnuckleAiDifficulty.values)
+                ListTile(
+                  leading: Icon(_difficultyIcon(option)),
+                  title: Text(option.label),
+                  subtitle: Text(option.description),
+                  trailing: option == saved
+                      ? Icon(
+                          Icons.check_circle,
+                          color: theme.colorScheme.primary,
+                        )
+                      : null,
+                  onTap: () => Navigator.of(sheetContext).pop(option),
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+    if (difficulty == null || !mounted) return;
+    await KnuckleAiProfileStore.saveDifficulty(difficulty);
+    if (!mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => KnuckleScreen.ai(
+          myUid: widget.uid,
+          myName: widget.names[widget.uid] ?? 'You',
+          difficulty: difficulty,
+        ),
+      ),
+    );
+  }
+
+  IconData _difficultyIcon(KnuckleAiDifficulty difficulty) {
+    return switch (difficulty) {
+      KnuckleAiDifficulty.easy => Icons.sentiment_satisfied_alt,
+      KnuckleAiDifficulty.normal => Icons.smart_toy_outlined,
+      KnuckleAiDifficulty.hard => Icons.psychology,
+    };
   }
 
   Future<void> _startKnuckle() async {
@@ -388,7 +512,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   controller: _input,
                   onSend: _send,
                   onPickPhoto: _pickAndSendPhoto,
-                  onStartKnuckle: _startKnuckle,
+                  onStartKnuckle: _chooseKnuckle,
                   replyTo: _replyTo,
                   onCancelReply: _cancelReply,
                 ),
