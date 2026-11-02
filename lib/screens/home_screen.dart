@@ -5,6 +5,7 @@ import '../models/profile.dart';
 import '../services/chat_service.dart';
 import '../services/contacts_service.dart';
 import '../services/profile_service.dart';
+import '../widgets/update_prompt.dart';
 import 'chat_screen.dart';
 import 'settings_screen.dart';
 
@@ -29,6 +30,10 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     // Profiles exist purely so chat bubbles can say who wrote something.
     _profiles.ensureProfile(uid: widget.uid, email: widget.email);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await checkForUpdates(context);
+    });
   }
 
   void _toast(String message) {

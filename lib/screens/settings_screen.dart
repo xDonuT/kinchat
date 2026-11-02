@@ -9,6 +9,7 @@ import '../services/contacts_service.dart';
 import '../services/profile_service.dart';
 import '../services/theme_service.dart';
 import '../services/wallpaper_service.dart';
+import '../widgets/update_prompt.dart';
 
 /// Personal tweaks: the name others see and the chat background, which is
 /// kept only on this phone. Reachable from the home screen's gear icon.
@@ -279,6 +280,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onChanged: (value) =>
                       ThemeService.instance.setDarkMode(value),
                 ),
+              ),
+              const Divider(height: 40),
+              const _Header(label: 'Updates'),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.system_update_alt),
+                title: const Text('Check for updates'),
+                subtitle: const Text('Download the latest APK from GitHub.'),
+                onTap: () => checkForUpdates(context, manual: true),
               ),
               const Divider(height: 40),
               const _Header(label: 'Add a friend'),

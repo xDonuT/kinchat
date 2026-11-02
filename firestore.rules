@@ -7,12 +7,12 @@ service cloud.firestore {
     // The accounts allowed into this database. Anyone else is denied by
     // Cloud Firestore itself, not by the app. Add a UID here whenever a
     // new family member joins, then redeploy.
-    //   You:      owner-account   3Dg3UMznaWTjrpodHCokaPkjEEt1
-    //   Nephew:   nephew-account      LKiCZKuQRPf3BL3NsnSDcRYIKjH2
-    //   MatMat:   matmat-account        BWBzQQl3GCeL8w9tjAY0cyxkzcB2
-    //   TanTan:   tantan-account        cCMfAF6iowWGHdDN5QYRYabe0ng1
-    //   MiKy:     miky-account          CCQve7XDMBf5srFmzUeJXolsIj92
-    //   Orange:   orange-account     Wj7CjQLG5QMkc0eziwG8F7XB52p2
+    //   Owner:    3Dg3UMznaWTjrpodHCokaPkjEEt1
+    //   Nephew:   LKiCZKuQRPf3BL3NsnSDcRYIKjH2
+    //   MatMat:   BWBzQQl3GCeL8w9tjAY0cyxkzcB2
+    //   TanTan:   cCMfAF6iowWGHdDN5QYRYabe0ng1
+    //   MiKy:     CCQve7XDMBf5srFmzUeJXolsIj92
+    //   Orange:   Wj7CjQLG5QMkc0eziwG8F7XB52p2
     // ------------------------------------------------------------------
     function isMember() {
       return request.auth != null
