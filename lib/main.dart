@@ -1,5 +1,7 @@
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'firebase_options.dart';
@@ -19,6 +21,17 @@ Future<void> main() async {
     // The integration-test harness boots the app once itself, then the test
     // body calls main() again. A second default app is expected there.
     if (e.code != 'duplicate-app') rethrow;
+  }
+  if (!useEmulator) {
+    try {
+      await FirebaseAppCheck.instance.activate(
+        providerAndroid: kReleaseMode
+            ? AndroidPlayIntegrityProvider()
+            : AndroidDebugProvider(),
+      );
+    } catch (e) {
+      debugPrint('App Check activation failed: $e');
+    }
   }
   await connectToEmulators();
   await ThemeService.instance.load();

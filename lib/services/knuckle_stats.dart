@@ -66,26 +66,14 @@ class KnuckleStats {
       opponents.values.fold(0, (total, line) => total + line.wins);
   int get losses =>
       opponents.values.fold(0, (total, line) => total + line.losses);
-  int get draws =>
+    int get draws =>
       opponents.values.fold(0, (total, line) => total + line.draws);
-  int get played => wins + losses + draws;
+    int get played => wins + losses + draws;
 
-  KnuckleStatLine? forOpponent(String? id) {
-    if (id == null) return null;
-    return opponents[id];
-  }
-
-  List<KnuckleStatLine> get leaderboard {
-    final lines = opponents.values.toList();
-    lines.sort((a, b) {
-      final byPoints = b.points.compareTo(a.points);
-      if (byPoints != 0) return byPoints;
-      final byWins = b.wins.compareTo(a.wins);
-      if (byWins != 0) return byWins;
-      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-    });
-    return lines;
-  }
+    KnuckleStatLine? forOpponent(String? id) {
+      if (id == null) return null;
+      return opponents[id];
+    }
 }
 
 class KnuckleStatsStore {

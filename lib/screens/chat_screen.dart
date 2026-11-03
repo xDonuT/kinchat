@@ -21,7 +21,6 @@ import '../services/kuteken_emoji.dart';
 import '../services/notification_service.dart';
 import '../services/wallpaper_service.dart';
 import '../widgets/knuckle_card.dart';
-import '../widgets/knuckle_leaderboard.dart';
 import 'image_viewer_screen.dart';
 import 'knuckle_screen.dart';
 
@@ -132,13 +131,6 @@ class _ChatScreenState extends State<ChatScreen> {
               subtitle: const Text('Play locally, no invite needed'),
               onTap: () => Navigator.of(sheetContext).pop('ai'),
             ),
-            const Divider(height: 1),
-            ListTile(
-              leading: const Icon(Icons.leaderboard_outlined),
-              title: const Text('Knuckle leaderboard'),
-              subtitle: const Text('Your local win/loss records'),
-              onTap: () => Navigator.of(sheetContext).pop('stats'),
-            ),
           ],
         ),
       ),
@@ -148,8 +140,6 @@ class _ChatScreenState extends State<ChatScreen> {
       await _startKnuckle();
     } else if (choice == 'ai') {
       await _startKnuckleAi();
-    } else if (choice == 'stats') {
-      await showKnuckleLeaderboard(context);
     }
   }
 

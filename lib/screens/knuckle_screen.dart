@@ -10,7 +10,6 @@ import '../services/knuckle_engine.dart';
 import '../services/knuckle_service.dart';
 import '../services/knuckle_sfx.dart';
 import '../services/knuckle_stats.dart';
-import '../widgets/knuckle_leaderboard.dart';
 
 class KnuckleScreen extends StatefulWidget {
   const KnuckleScreen({
@@ -456,14 +455,6 @@ class _KnuckleScreenState extends State<KnuckleScreen> {
             : 'Knucklebones',
       ),
       actions: [
-        IconButton(
-          onPressed: () => showKnuckleLeaderboard(
-            context,
-            highlightId: _currentOpponentId,
-          ),
-          icon: const Icon(Icons.leaderboard_outlined),
-          tooltip: 'Knuckle leaderboard',
-        ),
         IconButton(
           onPressed: _showRules,
           icon: const Icon(Icons.help_outline_rounded),
